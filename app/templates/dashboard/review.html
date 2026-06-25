@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Review{% endblock %}
+{% set review_count = total %}
+
+{% block content %}
+<div class="page">
+
+  <div class="page-header flex items-center gap-16">
+    <div class="flex-1">
+      <div class="page-title">Review queue</div>
+      <div class="page-subtitle">{{ total }} document{% if total != 1 %}s{% endif %} waiting for human decision</div>
+    </div>
+    <div class="mono fs-11 text-dim">Auto-refreshing
+      <span id="review-refresh"
+            hx-get="/dashboard/partials/review-rows"
+            hx-trigger="every 8s"
+            hx-target="#review-list"
+            hx-swap="innerHTML"
+            style="display:none;"></span>
+    </div>
+  </div>
+
+  <div id="review-list">
+    {% include "dashboard/partials/review_rows.html" %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Start auto-refresh trigger
+  document.getElementById('review-refresh').style.display = 'block';
+</script>
+{% endblock %}

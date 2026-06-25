@@ -1,0 +1,1182 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.file_name }}{% endblock %}
+
+{% block extra_styles %}
+/* ── Doc detail specific ──────────────────────────────────────────────── */
+.viewer-layout {
+  display: grid;
+  grid-template-columns: 1fr 440px;
+  gap: 0;
+  height: calc(100vh - 48px);
+  overflow: hidden;
+}
+.viewer-left {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.viewer-topbar {
+  flex: none;
+  height: 48px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+.viewer-canvas-area {
+  flex: 1;
+  overflow: auto;
+  background: #060A09;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+.viewer-canvas-wrap {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+#page-img {
+  display: block;
+  max-width: 100%;
+}
+#highlight-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+}
+/* Fields panel */
+.fields-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fields-tabs {
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.fields-tab {
+  padding: 12px 16px;
+  font-size: 12px; font-weight: 500;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fields-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.fields-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+  position: relative;
+}
+.field-row:hover { background: var(--surface-2); }
+.field-row.selected { background: var(--accent-dim); }
+.field-row.selected .field-name { color: var(--accent); }
+.field-jump {
+  flex: none;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(0,201,122,0.08);
+  border: 1px solid rgba(0,201,122,0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  opacity: 0.45;
+  transition: opacity 0.12s, background 0.12s;
+}
+.field-row:hover .field-jump {
+  opacity: 1;
+  background: rgba(0,201,122,0.18);
+  border-color: var(--accent);
+}
+.field-name {
+  flex: none;
+  width: 130px;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+.field-value {
+  flex: 1;
+  min-width: 0;           /* allow shrink — without this the span pushes the jump button off-screen */
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field-conf {
+  flex: none;
+  width: 36px;
+  font-size: 10px;
+  color: var(--dim);
+  text-align: right;
+}
+.tier-dot {
+  flex: none;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+}
+/* Highlight pulse on match */
+@keyframes highlightPulse {
+  0%,100% { opacity: 0.35; }
+  50%      { opacity: 0.7; }
+}
+.highlight-flash { animation: highlightPulse 0.5s ease 2; }
+/* Row click flash */
+@keyframes rowClick {
+  0%   { background: rgba(0,201,122,0.22); }
+  100% { background: transparent; }
+}
+.field-row-clicked { animation: rowClick 0.3s ease forwards; }
+/* Actions strip */
+.action-strip {
+  flex: none;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 14px 16px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="viewer-layout">
+
+  <!-- ── LEFT: PDF VIEWER ────────────────────────────────────── -->
+  <div class="viewer-left">
+
+    <!-- Top bar -->
+    <div class="viewer-topbar">
+      <a href="javascript:history.back()" class="btn btn-secondary btn-sm" style="flex:none;">← Back</a>
+      <span class="truncate" style="flex:1;font-size:13px;color:var(--text);" title="{{ doc.file_name }}">
+        {{ doc.file_name }}
+      </span>
+      <span class="badge" style="flex:none;color:{{ doc.status_color }};background:{{ doc.status_bg }};">
+        {{ doc.status | replace('_',' ') }}
+      </span>
+      <!-- Class name + confidence chip in top bar -->
+      <span style="flex:none;display:flex;align-items:center;gap:6px;">
+        <span class="mono fs-11 text-muted">{{ doc.class_name }}</span>
+        <span style="font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;
+                     padding:1px 7px;border-radius:12px;
+                     color:{{ doc.conf_color }};background:{{ doc.conf_bg }};">
+          {{ doc.confidence }}
+        </span>
+      </span>
+
+      <!-- Signature badge (only when check_signature ran) -->
+      {% if doc.is_signed is not none %}
+      {% if doc.is_signed %}
+      <span id="sig-badge"
+            style="flex:none;font-size:11px;font-weight:600;padding:1px 8px;
+                   border-radius:12px;cursor:pointer;
+                   color:#00C97A;background:rgba(0,201,122,0.12);"
+            title="Signed — {{ (doc.signature_confidence * 100)|int }}% confidence ({{ doc.signature_evidence.method if doc.signature_evidence else '' }})"
+            onclick="document.getElementById('sig-evidence').style.display = document.getElementById('sig-evidence').style.display === 'none' ? 'block' : 'none'">
+        ✍ Signed
+      </span>
+      {% else %}
+      <span id="sig-badge"
+            style="flex:none;font-size:11px;font-weight:600;padding:1px 8px;
+                   border-radius:12px;color:var(--muted);background:var(--surface-2);"
+            title="No signature detected — {{ (doc.signature_confidence * 100)|int }}% confidence">
+        ○ Unsigned
+      </span>
+      {% endif %}
+      {% endif %}
+
+      {% if page_count > 1 %}
+      <!-- Page navigation (AJAX — no full reload) -->
+      <div style="display:flex;align-items:center;gap:3px;flex:none;">
+        <button class="btn btn-secondary btn-sm" id="first-page"
+                onclick="navToPage(0)"
+                {% if pdf_page_num == 0 %}disabled{% endif %}
+                title="First page">⏮</button>
+        <button class="btn btn-secondary btn-sm" id="prev-page"
+                onclick="navToPage(currentPage - 1)"
+                {% if pdf_page_num == 0 %}disabled{% endif %}
+                title="Previous page">←</button>
+        <!-- Page jump input -->
+        <form onsubmit="navToPage(parseInt(this.p.value,10)-1);return false;"
+              style="display:flex;align-items:center;gap:3px;">
+          <input id="page-jump" name="p"
+                 type="number" min="1" max="{{ page_count }}"
+                 value="{{ pdf_page_num + 1 }}"
+                 style="width:46px;text-align:center;font-family:'JetBrains Mono',monospace;
+                        font-size:11px;padding:2px 4px;border-radius:4px;
+                        background:var(--surface-1);border:1px solid var(--border);
+                        color:var(--text);">
+          <span class="mono fs-11 text-muted" id="page-indicator"
+                style="white-space:nowrap;">/ {{ page_count }}</span>
+        </form>
+        <button class="btn btn-secondary btn-sm" id="next-page"
+                onclick="navToPage(currentPage + 1)"
+                {% if pdf_page_num >= page_count - 1 %}disabled{% endif %}
+                title="Next page">→</button>
+        <button class="btn btn-secondary btn-sm" id="last-page"
+                onclick="navToPage({{ page_count - 1 }})"
+                {% if pdf_page_num >= page_count - 1 %}disabled{% endif %}
+                title="Last page">⏭</button>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Canvas area -->
+    <div class="viewer-canvas-area" id="canvas-area">
+      {% if doc.has_pdf %}
+      <div class="viewer-canvas-wrap" id="canvas-wrap">
+        <img id="page-img"
+             src="/dashboard/docs/{{ doc.id }}/pdf-page/{{ pdf_page_num }}"
+             alt="Page {{ pdf_page_num + 1 }}"
+             onload="onImgLoad()">
+        <canvas id="highlight-canvas"></canvas>
+      </div>
+      {% else %}
+      <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;">
+        <div style="text-align:center;">
+          <div class="mono fs-12 text-dim" style="margin-bottom:8px;">PDF not available</div>
+          <div class="fs-12 text-muted">
+            Only PDFs ingested via the dashboard are stored locally.<br>
+            Production PDFs are archived to SharePoint.
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- ── RIGHT: FIELDS PANEL ─────────────────────────────────── -->
+  <div class="fields-panel">
+
+    <!-- Classification banner -->
+    {% set all_classes = classes %}
+    {% include "dashboard/partials/class_banner.html" %}
+
+    <!-- Tabs -->
+    <div class="fields-tabs">
+      <div class="fields-tab active" data-tab="fields">
+        Fields ({{ (doc.fields | length) + (tables | length) }})
+      </div>
+      <div class="fields-tab" data-tab="trail">
+        Pipeline trail
+      </div>
+      <div class="fields-tab" data-tab="meta">
+        Info
+      </div>
+    </div>
+
+    <!-- Tab contents -->
+    <div class="fields-content">
+
+      <!-- ── FIELDS TAB ──────────────────────────── -->
+      <div class="tab-panel active" id="tab-fields">
+      <div id="fields-panel">
+
+        {% if doc.fields %}
+
+        {# ── ZERO_SHOT DISCOVERY MODE ─────────────────────────── #}
+        {% if doc.is_discovery_mode %}
+        <div style="padding:12px 16px;background:rgba(124,132,232,0.08);
+                    border-bottom:2px solid #7C84E8;">
+          <div style="font-size:12px;font-weight:600;color:#7C84E8;margin-bottom:4px;">
+            🔍 AI Field Discovery — {{ (doc.fields|length) + (tables|length) }} fields found
+            ({{ doc.fields | selectattr("method", "ne", "AI_DISCOVERY_ADDITIONAL") | list | length }} core +
+             {{ doc.fields | selectattr("method", "equalto", "AI_DISCOVERY_ADDITIONAL") | list | length }} additional
+             {% if tables %}+ {{ tables|length }} table{% if tables|length != 1 %}s{% endif %}{% endif %})
+          </div>
+          <div class="fs-11 text-dim" style="line-height:1.5;">
+            AI scanned this document and found the fields below.
+            Tick the ones you want to extract for <strong>all {{ doc.class_name }}</strong> documents.
+            Click a field name to rename it. Then click <strong>Confirm schema</strong>.
+          </div>
+        </div>
+
+        <form id="discovery-form"
+              hx-post="/dashboard/docs/{{ doc.id }}/confirm-fields"
+              hx-target="#toast-container"
+              hx-swap="beforeend">
+
+          <!-- Select all / none + AI suggest + confirm button -->
+          <div style="display:flex;gap:8px;align-items:center;padding:8px 16px;
+                      border-bottom:1px solid var(--border);background:var(--surface-1);flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary btn-sm"
+                    onclick="document.querySelectorAll('#discovery-form input[type=checkbox]').forEach(c=>c.checked=true)">
+              All
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm"
+                    onclick="document.querySelectorAll('#discovery-form input[type=checkbox]').forEach(c=>c.checked=false)">
+              None
+            </button>
+            <button type="button" id="ai-rename-btn"
+                    class="btn btn-sm"
+                    style="background:transparent;border:1px solid #9b59b6;color:#9b59b6;"
+                    onclick="aiSuggestRenames('{{ doc.id }}')"
+                    title="Ask AI to suggest clean canonical names for all extracted field labels">
+              ✨ Suggest names
+            </button>
+            <span class="fs-11 text-dim" style="flex:1;min-width:100px;">
+              Edit the name box to rename · verbatim labels kept until you change them
+            </span>
+            <button type="submit" class="btn btn-primary btn-sm">✓ Confirm schema</button>
+          </div>
+
+          <!-- Discovery field rows: core (pre-checked) + additional (collapsible, unchecked) -->
+          {% set core_fields = doc.fields | selectattr("method", "ne", "AI_DISCOVERY_ADDITIONAL") | list %}
+          {% set additional_fields = doc.fields | selectattr("method", "equalto", "AI_DISCOVERY_ADDITIONAL") | list %}
+
+          <!-- Core fields header -->
+          <div style="padding:4px 14px 2px;font-size:10px;font-weight:600;
+                      letter-spacing:.05em;color:#7C84E8;text-transform:uppercase;
+                      background:var(--surface-1);border-bottom:1px solid var(--border);">
+            ✓ Recommended ({{ core_fields | length }}) — pre-selected for ERP
+          </div>
+
+          {% for f in core_fields %}
+          <div class="field-row"
+               data-row="{{ loop.index }}"
+               data-value="{{ f.value | replace('"', '&quot;') }}"
+               {% if f.extraction_page is not none %}data-page="{{ f.extraction_page }}"{% endif %}
+               {% if f.extraction_bbox %}data-bbox="{{ f.extraction_bbox | tojson | replace('"', '&quot;') }}"{% endif %}
+               style="gap:8px;padding:7px 14px;
+                      background:{% if loop.index is odd %}var(--surface-1){% else %}var(--bg){% endif %};">
+            <input type="checkbox" name="confirmed_fields" value="{{ f.name }}"
+                   checked id="chk_{{ loop.index }}"
+                   style="flex:none;width:14px;height:14px;cursor:pointer;"
+                   onclick="event.stopPropagation()">
+            <input type="text" name="rename_{{ f.name }}"
+                   value="{{ f.name }}"
+                   style="flex:none;width:140px;font-size:11px;
+                          font-family:'JetBrains Mono',monospace;
+                          padding:2px 5px;border-radius:3px;
+                          background:transparent;color:var(--text);
+                          border:1px dashed transparent;"
+                   onfocus="this.style.borderColor='var(--accent)'"
+                   onblur="this.style.borderColor='transparent'"
+                   onclick="event.stopPropagation()">
+            <span style="flex:1;font-size:12px;color:var(--text-muted);
+                         overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                  title="{{ f.value }}">
+              {{ f.value }}
+            </span>
+            <span class="field-conf" style="flex:none;">{{ f.confidence }}</span>
+            <span class="field-jump">↗ jump</span>
+          </div>
+          {% endfor %}
+
+          <!-- Additional fields (collapsed, unchecked) -->
+          {% if additional_fields %}
+          <details style="border-top:2px dashed rgba(124,132,232,0.3);">
+            <summary style="display:flex;align-items:center;gap:8px;padding:8px 14px;
+                            cursor:pointer;font-size:11px;font-weight:600;
+                            color:var(--text-muted);background:var(--surface-1);
+                            list-style:none;user-select:none;">
+              <span style="font-size:10px;color:#7C84E8;">▶</span>
+              Additional fields ({{ additional_fields | length }}) — expand to include
+              <span style="margin-left:auto;font-weight:400;font-size:10px;opacity:.7;">
+                none selected by default
+              </span>
+            </summary>
+
+            {% for f in additional_fields %}
+            <div class="field-row"
+                 data-row="{{ loop.index + 1000 }}"
+                 data-value="{{ f.value | replace('"', '&quot;') }}"
+                 {% if f.extraction_page is not none %}data-page="{{ f.extraction_page }}"{% endif %}
+                 {% if f.extraction_bbox %}data-bbox="{{ f.extraction_bbox | tojson | replace('"', '&quot;') }}"{% endif %}
+                 style="gap:8px;padding:7px 14px;opacity:.85;
+                        background:{% if loop.index is odd %}var(--surface-1){% else %}var(--bg){% endif %};">
+              <input type="checkbox" name="confirmed_fields" value="{{ f.name }}"
+                     style="flex:none;width:14px;height:14px;cursor:pointer;"
+                     onclick="event.stopPropagation()">
+              <input type="text" name="rename_{{ f.name }}"
+                     value="{{ f.name }}"
+                     style="flex:none;width:140px;font-size:11px;
+                            font-family:'JetBrains Mono',monospace;
+                            padding:2px 5px;border-radius:3px;
+                            background:transparent;color:var(--text);
+                            border:1px dashed transparent;"
+                     onfocus="this.style.borderColor='var(--accent)'"
+                     onblur="this.style.borderColor='transparent'"
+                     onclick="event.stopPropagation()">
+              <span style="flex:1;font-size:12px;color:var(--text-muted);
+                           overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    title="{{ f.value }}">
+                {{ f.value }}
+              </span>
+              <span class="field-conf" style="flex:none;">{{ f.confidence }}</span>
+              <span class="field-jump">↗ jump</span>
+            </div>
+            {% endfor %}
+          </details>
+          {% endif %}
+
+          {# ── TABLE FIELDS (discovery mode) — checked by default ── #}
+          {% if has_tables %}
+          <div style="border-top:2px dashed rgba(76,175,80,0.35);">
+            <div style="padding:5px 14px 3px;font-size:10px;font-weight:600;letter-spacing:.05em;
+                        color:#4CAF50;text-transform:uppercase;background:var(--surface-1);
+                        border-bottom:1px solid var(--border);">
+              📋 Table fields ({{ tables|length }}) — pre-selected
+            </div>
+            {% for t in tables %}
+            <div style="border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;
+                          background:{% if loop.index is odd %}var(--surface-1){% else %}var(--bg){% endif %};">
+                <input type="checkbox" name="confirmed_fields" value="{{ t.name }}"
+                       checked style="flex:none;width:14px;height:14px;cursor:pointer;">
+                <input type="text" name="rename_{{ t.name }}" value="{{ t.name }}"
+                       style="flex:none;width:150px;font-size:11px;
+                              font-family:'JetBrains Mono',monospace;
+                              padding:2px 5px;border-radius:3px;
+                              background:transparent;color:var(--text);
+                              border:1px dashed transparent;"
+                       onfocus="this.style.borderColor='var(--accent)'"
+                       onblur="this.style.borderColor='transparent'">
+                <span style="font-size:10px;font-weight:700;color:#4CAF50;letter-spacing:.04em;">TABLE</span>
+                <span style="font-size:11px;color:var(--text-muted);">{{ t.row_count }} rows</span>
+                {% if t.columns %}
+                <span style="font-size:10px;color:var(--text-muted);flex:1;
+                             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  {{ t.columns | join(", ") }}
+                </span>
+                {% endif %}
+              </div>
+              {% if t.rows %}
+              <details style="margin:0 14px 6px 22px;">
+                <summary style="font-size:10px;color:var(--text-muted);cursor:pointer;
+                                user-select:none;padding:2px 0;">
+                  ▶ Preview rows
+                </summary>
+                <div style="overflow-x:auto;margin-top:4px;">
+                  <table style="font-size:10px;border-collapse:collapse;width:100%;">
+                    <thead>
+                      <tr>
+                        {% for col in t.columns %}
+                        <th style="padding:3px 8px;background:rgba(76,175,80,0.12);
+                                   border:1px solid var(--border);font-weight:600;
+                                   text-align:left;white-space:nowrap;">{{ col }}</th>
+                        {% endfor %}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in t.rows[:5] %}
+                      <tr>
+                        {% for col in t.columns %}
+                        <td style="padding:3px 8px;border:1px solid var(--border);
+                                   max-width:160px;overflow:hidden;text-overflow:ellipsis;
+                                   white-space:nowrap;"
+                            title="{{ row.get(col, '') }}">{{ row.get(col, '') }}</td>
+                        {% endfor %}
+                      </tr>
+                      {% endfor %}
+                      {% if t.row_count > 5 %}
+                      <tr>
+                        <td colspan="{{ t.columns|length }}"
+                            style="padding:3px 8px;border:1px solid var(--border);
+                                   text-align:center;color:var(--text-muted);font-style:italic;">
+                          … {{ t.row_count - 5 }} more rows
+                        </td>
+                      </tr>
+                      {% endif %}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <div style="padding:12px 16px;border-top:2px solid #7C84E8;
+                      background:rgba(124,132,232,0.06);display:flex;
+                      justify-content:flex-end;">
+            <button type="submit" class="btn btn-primary">
+              ✓ Save as schema for all {{ doc.class_name }} docs
+            </button>
+          </div>
+        </form>
+
+        {# ── NORMAL FIELDS (LEARNING / LEARNED / OPTIMISED) ──── #}
+        {% else %}
+        <!-- Legend -->
+        <div style="display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--border);
+                    background:var(--surface-1);">
+          {% for tier, label, color in [(1,'Text layer','#00C97A'),(2,'OCR','#F5A623'),(3,'AI Vision','#7C84E8')] %}
+          <div class="flex items-center gap-6">
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ color }};flex:none;"></span>
+            <span class="fs-11 text-dim">{{ label }}</span>
+          </div>
+          {% endfor %}
+          <span class="fs-11 text-dim" style="margin-left:auto;">Click to highlight</span>
+        </div>
+
+        <!-- Field rows -->
+        {% for f in doc.fields %}
+        <div class="field-row"
+             id="field-{{ loop.index }}"
+             data-value="{{ f.value | replace('"', '&quot;') }}"
+             data-row="{{ loop.index }}"
+             {% if f.extraction_page is not none %}data-page="{{ f.extraction_page }}"{% endif %}
+             {% if f.extraction_bbox %}data-bbox="{{ f.extraction_bbox | tojson | replace('"', '&quot;') }}"{% endif %}
+             title="{{ f.name }} · {{ f.tier_label }} · {{ f.model }}{% if f.extraction_page is not none %} · p.{{ f.extraction_page + 1 }}{% endif %}">
+          <span class="tier-dot" style="background:{{ f.tier_color }};"></span>
+          <span class="field-name">{{ f.name }}</span>
+          <span class="field-value">
+            {% if f.corrected %}
+            <span style="text-decoration:line-through;color:var(--dim);font-size:10px;display:block;">{{ f.raw_value }}</span>
+            <span style="color:var(--warn);">{{ f.corrected_value }}</span>
+            {% else %}
+            {{ f.value }}
+            {% endif %}
+          </span>
+          <span class="field-conf">{{ f.confidence }}</span>
+          {% if f.extraction_page is not none %}
+          <span class="mono" style="font-size:9px;color:var(--dim);flex:none;"
+                title="Found on page {{ f.extraction_page + 1 }}">p.{{ f.extraction_page + 1 }}</span>
+          {% endif %}
+          {% if f.match_result %}
+          <span class="mono" style="font-size:9px;color:{{ f.match_color }};flex:none;">{{ f.match_result }}</span>
+          {% endif %}
+          <span class="field-jump">↗ jump</span>
+        </div>
+        {% endfor %}
+
+        {# ── TABLE FIELDS (learning+ mode) ── #}
+        {% if has_tables %}
+        <div style="padding:5px 14px 3px;font-size:10px;font-weight:600;letter-spacing:.05em;
+                    color:#4CAF50;text-transform:uppercase;background:var(--surface-1);
+                    border-top:2px solid rgba(76,175,80,0.3);border-bottom:1px solid var(--border);">
+          📋 Table Fields ({{ tables|length }})
+        </div>
+        {% for t in tables %}
+        <details style="border-bottom:1px solid var(--border);">
+          <summary style="display:flex;align-items:center;gap:8px;padding:7px 14px;
+                          cursor:pointer;background:var(--surface-1);list-style:none;user-select:none;">
+            <span class="tier-dot" style="background:#4CAF50;"></span>
+            <span class="field-name">{{ t.name }}</span>
+            <span class="field-value" style="color:var(--text-muted);">{{ t.row_count }} rows</span>
+            <span class="field-conf" style="color:#4CAF50;font-size:10px;font-weight:700;">TABLE ▶</span>
+          </summary>
+          {% if t.rows %}
+          <div style="padding:6px 14px 10px 22px;overflow-x:auto;">
+            <table style="font-size:10px;border-collapse:collapse;width:100%;">
+              <thead>
+                <tr>
+                  {% for col in t.columns %}
+                  <th style="padding:3px 8px;background:rgba(76,175,80,0.1);
+                             border:1px solid var(--border);font-weight:600;
+                             text-align:left;white-space:nowrap;">{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in t.rows[:10] %}
+                <tr>
+                  {% for col in t.columns %}
+                  <td style="padding:3px 8px;border:1px solid var(--border);
+                             max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                      title="{{ row.get(col, '') }}">{{ row.get(col, '') }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+                {% if t.row_count > 10 %}
+                <tr>
+                  <td colspan="{{ t.columns|length }}"
+                      style="padding:3px 8px;border:1px solid var(--border);
+                             text-align:center;color:var(--text-muted);font-style:italic;">
+                    … {{ t.row_count - 10 }} more rows
+                  </td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </details>
+        {% endfor %}
+        {% endif %}
+
+        {% endif %}{# end discovery / normal #}
+
+        {% else %}
+        <div style="padding:32px 24px;text-align:center;">
+          {% if doc.status in ['CLASSIFYING','EXTRACTING','GOVERNING','RECEIVED','PROOFREADING'] %}
+          <div class="mono fs-12 text-dim">Pipeline still running…</div>
+          {% elif doc.learning_stage == 'ZERO_SHOT' %}
+          <div style="font-size:13px;color:#7C84E8;font-weight:600;margin-bottom:8px;">
+            🔍 No fields discovered yet
+          </div>
+          <div class="fs-12 text-dim" style="line-height:1.6;margin-bottom:16px;">
+            The AI hasn't scanned this document yet. Click below to run
+            free-form discovery — it will find every field on the page
+            and let you choose which ones to keep.
+          </div>
+          {% if doc.has_pdf %}
+          <button class="btn btn-primary"
+                  hx-post="/dashboard/docs/{{ doc.id }}/re-extract"
+                  hx-target="#fields-panel"
+                  hx-swap="innerHTML"
+                  hx-indicator="#reextract-spinner">
+            <span id="reextract-spinner" class="htmx-indicator" style="margin-right:6px;">⏳</span>
+            Run AI Discovery
+          </button>
+          {% else %}
+          <div class="fs-11 text-dim" style="margin-top:8px;">
+            PDF not stored — please re-upload the document via Ingest.
+          </div>
+          {% endif %}
+          {% else %}
+          <div class="mono fs-12 text-dim">No fields extracted</div>
+          <div class="fs-12 text-muted mt-8">Extraction found no fields for this document class.</div>
+          {% endif %}
+        </div>
+        {% endif %}
+        </div>{# end #fields-panel #}
+
+        <!-- Signature evidence panel (visible only when doc is signed + evidence exists) -->
+        {% if doc.is_signed and doc.signature_evidence %}
+        {% set ev = doc.signature_evidence %}
+        <div id="sig-evidence"
+             style="display:none;border-top:2px solid rgba(0,201,122,0.5);
+                    background:rgba(0,201,122,0.06);padding:12px 16px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="font-size:13px;color:#00C97A;font-weight:600;">✍ Signature evidence</span>
+            <span class="chip" style="font-size:9px;color:#00C97A;background:rgba(0,201,122,0.12);">
+              {{ ev.method | replace('_',' ') | upper }}
+            </span>
+            <span class="mono fs-10 text-dim" style="margin-left:auto;">
+              {{ (doc.signature_confidence * 100)|int }}% confidence
+              {% if ev.page is not none %} · p.{{ ev.page + 1 }}{% endif %}
+            </span>
+          </div>
+          {% if ev.screenshot_b64 %}
+          <div style="border-radius:4px;overflow:hidden;border:1px solid rgba(0,201,122,0.25);
+                      max-width:100%;text-align:center;background:#0A1210;">
+            <img src="data:image/jpeg;base64,{{ ev.screenshot_b64 }}"
+                 style="max-width:100%;max-height:200px;display:block;margin:0 auto;"
+                 alt="Signature evidence crop">
+          </div>
+          {% if ev.page is not none %}
+          <div style="margin-top:6px;text-align:right;">
+            <button class="btn btn-secondary btn-sm"
+                    onclick="navToPage({{ ev.page }})"
+                    style="font-size:10px;">
+              Jump to page {{ ev.page + 1 }}
+            </button>
+          </div>
+          {% endif %}
+          {% else %}
+          <div class="fs-11 text-dim">Evidence image not available (digital signature detected in PDF structure).</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+      </div>
+
+      <!-- ── PIPELINE TRAIL TAB ──────────────────── -->
+      <div class="tab-panel" id="tab-trail">
+        <div style="padding:0;">
+          {% if doc.events %}
+          {% for ev in doc.events %}
+          <div style="display:flex;gap:10px;align-items:flex-start;
+                      padding:10px 16px;border-bottom:1px solid var(--border);">
+            <span class="mono text-dim" style="flex:none;font-size:10px;padding-top:2px;
+                                               white-space:nowrap;width:56px;">{{ ev.ts }}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap-8:gap;margin-bottom:3px;">
+                <span class="chip" style="font-size:9px;padding:1px 5px;margin-right:6px;">{{ ev.state }}</span>
+                <span class="mono fs-11 text-muted">{{ ev.agent }}</span>
+              </div>
+              <div class="fs-12 text-dim" style="word-break:break-word;line-height:1.4;">{{ ev.detail }}</div>
+            </div>
+          </div>
+          {% endfor %}
+          {% else %}
+          <div class="table-empty">No pipeline events recorded</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ── INFO / META TAB ────────────────────── -->
+      <div class="tab-panel" id="tab-meta">
+        <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+
+          {% for label, value in [
+            ('Document ID',     doc.id),
+            ('File name',       doc.file_name),
+            ('File size',       doc.file_size_kb ~ ' KB'),
+            ('SHA-256',         doc.sha256),
+            ('Submitted',       doc.created_at),
+          ] %}
+          <div style="border-bottom:1px solid var(--border);padding-bottom:10px;">
+            <div class="fs-11 text-dim mb-4" style="text-transform:uppercase;letter-spacing:0.06em;">{{ label }}</div>
+            <div class="mono fs-12 text-text" style="word-break:break-all;">{{ value }}</div>
+          </div>
+          {% endfor %}
+
+          {% if doc.extraction_method and doc.extraction_method != '—' %}
+          <div style="border-bottom:1px solid var(--border);padding-bottom:10px;">
+            <div class="fs-11 text-dim mb-4" style="text-transform:uppercase;letter-spacing:0.06em;">Extraction method</div>
+            <div class="mono fs-12 text-text">{{ doc.tier_label }} · {{ doc.extraction_method }}</div>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── HIGHLIGHT STATUS BAR (outside scroll — always visible when active) ── -->
+    <div id="highlight-status"
+         style="flex:none;display:none;padding:7px 14px;
+                border-top:2px solid var(--accent);
+                background:rgba(0,201,122,0.07);
+                font-family:'JetBrains Mono',monospace;font-size:11px;
+                color:var(--text);line-height:1.3;">
+    </div>
+
+    <!-- ── ACTION STRIP (at bottom of panel) ──── -->
+    {% if is_review or is_discovery %}
+    <div class="action-strip" id="action-strip">
+
+      {% if is_review %}
+      <div class="fs-11 text-muted mb-12" style="font-weight:500;text-transform:uppercase;letter-spacing:0.06em;">
+        Review actions
+      </div>
+
+      <!-- Approve form -->
+      <form hx-post="/dashboard/review/{{ doc.id }}/approve"
+            hx-target="#toast-container"
+            hx-swap="beforeend"
+            hx-on::after-request="window.location.href='/dashboard/review'"
+            style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+        <div style="display:flex;gap:8px;">
+          <select name="target_stage" class="field-select" style="flex:1;">
+            <option value="VALIDATING">Re-validate</option>
+            <option value="EXTRACTING">Re-extract</option>
+            <option value="MATCHING">Skip to match</option>
+            <option value="COMPLETED">Accept as-is</option>
+          </select>
+          <button type="submit" class="btn btn-primary btn-sm">✓ Approve</button>
+        </div>
+        <input type="hidden" name="approved_by" value="ops@dokr.local">
+      </form>
+
+      <!-- Reject form -->
+      <form hx-post="/dashboard/review/{{ doc.id }}/reject"
+            hx-target="#toast-container"
+            hx-swap="beforeend"
+            hx-on::after-request="window.location.href='/dashboard/review'"
+            style="display:flex;gap:8px;">
+        <input type="text" name="reason" placeholder="Reject reason…" class="field-input" required style="flex:1;">
+        <input type="hidden" name="rejected_by" value="ops@dokr.local">
+        <button type="submit" class="btn btn-danger btn-sm">✕ Reject</button>
+      </form>
+      {% endif %}
+
+      {% if is_discovery %}
+      <div class="fs-11 text-muted mb-12" style="font-weight:500;text-transform:uppercase;letter-spacing:0.06em;">
+        Discovery actions
+      </div>
+
+      <!-- Promote form -->
+      <form hx-post="/dashboard/discovery/{{ doc.id }}/promote"
+            hx-target="#toast-container"
+            hx-swap="beforeend"
+            hx-on::after-request="window.location.href='/dashboard/discovery'"
+            style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+        <input type="text" name="class_name" value="{{ doc.suggested_class }}"
+               placeholder="New class name…" class="field-input" required>
+        <input type="hidden" name="promoted_by" value="ops@dokr.local">
+        <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-start;">
+          ✓ Create class &amp; re-extract
+        </button>
+      </form>
+
+      <!-- Dismiss -->
+      <form hx-post="/dashboard/discovery/{{ doc.id }}/dismiss"
+            hx-target="#toast-container"
+            hx-swap="beforeend"
+            hx-on::after-request="window.location.href='/dashboard/discovery'"
+            style="display:flex;gap:8px;">
+        <input type="text" name="reason" placeholder="Dismiss reason…" class="field-input" required style="flex:1;">
+        <input type="hidden" name="dismissed_by" value="ops@dokr.local">
+        <button type="submit" class="btn btn-warn btn-sm">→ Review</button>
+      </form>
+      {% endif %}
+
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // ── Tab switching ──────────────────────────────────────────────────────────
+  document.querySelectorAll('.fields-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      document.querySelectorAll('.fields-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('tab-' + target).classList.add('active');
+    });
+  });
+
+  // ── Viewer state ───────────────────────────────────────────────────────────
+  const canvas    = document.getElementById('highlight-canvas');
+  const img       = document.getElementById('page-img');
+  const status    = document.getElementById('highlight-status');
+  const prevBtn   = document.getElementById('prev-page');
+  const nextBtn   = document.getElementById('next-page');
+  const firstBtn  = document.getElementById('first-page');
+  const lastBtn   = document.getElementById('last-page');
+  const jumpInput = document.getElementById('page-jump');
+  const indicator = document.getElementById('page-indicator');
+  let ctx         = canvas ? canvas.getContext('2d') : null;
+  let currentPage = {{ pdf_page_num }};
+  const pageCount = {{ page_count }};
+  const docId     = '{{ doc.id }}';
+  let activeRow   = null;  // stores the currently-selected DOM element (not an index)
+  let pendingHighlightAfterLoad = null;  // {rects, color} or {bbox} to draw after img loads
+
+  const FIELD_COLORS = [
+    { fill: 'rgba(0,201,122,0.28)',   stroke: 'rgba(0,201,122,0.9)' },
+    { fill: 'rgba(124,132,232,0.28)', stroke: 'rgba(124,132,232,0.9)' },
+    { fill: 'rgba(245,166,35,0.28)',  stroke: 'rgba(245,166,35,0.9)' },
+    { fill: 'rgba(255,100,100,0.28)', stroke: 'rgba(255,100,100,0.9)' },
+    { fill: 'rgba(100,200,255,0.28)', stroke: 'rgba(100,200,255,0.9)' },
+  ];
+  let colorIdx = 0;
+
+  // ── Canvas sizing ──────────────────────────────────────────────────────────
+  function syncCanvasSize() {
+    if (!canvas || !img) return;
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.style.width  = img.offsetWidth  + 'px';
+    canvas.style.height = img.offsetHeight + 'px';
+  }
+
+  function onImgLoad() {
+    // Set bitmap dimensions immediately (naturalWidth is valid at load time).
+    if (canvas && img && img.naturalWidth) {
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+    }
+    if (pendingHighlightAfterLoad) {
+      const p = pendingHighlightAfterLoad;
+      pendingHighlightAfterLoad = null;
+      // Defer to the next animation frame so the browser has reflowed the new
+      // image into the DOM.  At that point img.offsetWidth is the true display
+      // width, so syncCanvasSize() sets the correct CSS size and all drawing
+      // coordinates land in the right place.
+      requestAnimationFrame(() => {
+        syncCanvasSize();
+        if (p.rects) {
+          drawRects(p.rects, p.color);
+          showStatus(`✓ ${p.rects.length} match${p.rects.length > 1 ? 'es' : ''} highlighted on page ${currentPage + 1}`, 'success');
+        } else if (p.bbox) {
+          drawBbox(p.bbox, p.color);
+          showStatus(`✓ Found on page ${currentPage + 1}`, 'success');
+        } else if (p.searchValue) {
+          doLiveSearch(p.searchValue, p.color);
+        }
+      });
+    } else {
+      syncCanvasSize();
+    }
+  }
+
+  window.addEventListener('resize', syncCanvasSize);
+
+  // ── AJAX page navigation ───────────────────────────────────────────────────
+  function navToPage(n, afterLoadHighlight) {
+    if (n < 0 || n >= pageCount) return;
+    currentPage = n;
+    if (img) img.src = `/dashboard/docs/${docId}/pdf-page/${n}`;
+    if (indicator) indicator.textContent = `/ ${pageCount}`;
+    if (jumpInput) jumpInput.value = n + 1;
+    if (prevBtn)  prevBtn.disabled  = (n === 0);
+    if (firstBtn) firstBtn.disabled = (n === 0);
+    if (nextBtn)  nextBtn.disabled  = (n >= pageCount - 1);
+    if (lastBtn)  lastBtn.disabled  = (n >= pageCount - 1);
+    clearHighlights(false);  // clear canvas only (keep status)
+    pendingHighlightAfterLoad = afterLoadHighlight || null;
+  }
+
+  // ── Highlight drawing ──────────────────────────────────────────────────────
+  function clearHighlights(hideStatus = true) {
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (hideStatus && status) status.style.display = 'none';
+  }
+
+  function drawRects(rects, color) {
+    if (!ctx || !rects.length) return;
+    ctx.fillStyle   = color.fill;
+    ctx.strokeStyle = color.stroke;
+    ctx.lineWidth   = 2;
+    for (const r of rects) {
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+    }
+    scrollHighlightIntoView(rects[0].y);
+  }
+
+  // bbox is [x0, y0, x1, y1] as fractions of page dimensions
+  function drawBbox(bbox, color) {
+    if (!ctx || !bbox || bbox.length < 4) return;
+    const W = canvas.width, H = canvas.height;
+    const x = bbox[0] * W, y = bbox[1] * H;
+    const w = (bbox[2] - bbox[0]) * W, h = (bbox[3] - bbox[1]) * H;
+    ctx.fillStyle   = color.fill;
+    ctx.strokeStyle = color.stroke;
+    ctx.lineWidth   = 2;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+    scrollHighlightIntoView(y);
+  }
+
+  function scrollHighlightIntoView(canvasY) {
+    // Defer one animation frame so the browser has reflowed after src-change.
+    // img.offsetHeight / getBoundingClientRect() are 0 during the load event.
+    requestAnimationFrame(() => {
+      if (!canvas || !img) return;
+      const scale = img.offsetHeight / (canvas.height || 1);
+      if (!scale) return;
+      const displayY = canvasY * scale;
+      const area = document.getElementById('canvas-area');
+      if (!area) return;
+      const imgTop = img.getBoundingClientRect().top - area.getBoundingClientRect().top + area.scrollTop;
+      area.scrollTo({ top: imgTop + displayY - area.clientHeight * 0.3, behavior: 'smooth' });
+    });
+  }
+
+  // ── Live text search (shared by Path B callback and Path C direct) ────────
+  async function doLiveSearch(value, color) {
+    if (!value || value === '—' || value.length < 2) {
+      clearHighlights();
+      showStatus('Value too short to search for', 'warn');
+      return;
+    }
+    showStatus('Searching…', 'info');
+    try {
+      const url = `/dashboard/docs/${docId}/field-rects?value=${encodeURIComponent(value)}&page=${currentPage}`;
+      const data = await fetch(url).then(r => r.json());
+
+      clearHighlights();
+
+      if (data.found && data.rects && data.rects.length > 0) {
+        const suffix = data.partial_match ? ` (matched "${data.matched_term}")` : '';
+        if (data.found_page !== undefined && data.found_page !== currentPage) {
+          navToPage(data.found_page, { rects: data.rects, color });
+          showStatus(`✓ Found on page ${data.found_page + 1}${suffix} — navigating…`, 'success');
+        } else {
+          drawRects(data.rects, color);
+          showStatus(`✓ ${data.rects.length} match${data.rects.length > 1 ? 'es' : ''} highlighted${suffix}`, 'success');
+        }
+      } else if (data.found && data.no_coords) {
+        const pg = data.found_page !== undefined ? ` on page ${data.found_page + 1}` : '';
+        showStatus(`✓ Found${pg} — exact highlight needs PyMuPDF`, 'warn');
+      } else if (data.reason === 'pdf_not_stored') {
+        showStatus('PDF not cached — re-ingest this document to enable field highlighting', 'error');
+      } else {
+        showStatus('Text not found — may be a scan or formatted differently', 'warn');
+      }
+    } catch (err) {
+      showStatus('Search failed: ' + err.message, 'error');
+    }
+  }
+
+  // ── Main field-click handler ───────────────────────────────────────────────
+  function highlightField(el) {
+    // Immediate click flash so user knows the click registered
+    el.classList.remove('field-row-clicked');
+    void el.offsetWidth; // force reflow to restart animation
+    el.classList.add('field-row-clicked');
+
+    const value  = el.dataset.value || '';
+    const storedPage = el.dataset.page !== undefined && el.dataset.page !== ''
+                       ? parseInt(el.dataset.page, 10) : null;
+    const storedBbox = el.dataset.bbox ? JSON.parse(el.dataset.bbox) : null;
+
+    // Toggle off if same row clicked again
+    if (activeRow === el) {
+      activeRow.classList.remove('selected');
+      activeRow = null;
+      clearHighlights();
+      return;
+    }
+
+    // Deselect previous
+    if (activeRow !== null) {
+      activeRow.classList.remove('selected');
+    }
+    activeRow = el;
+    el.classList.add('selected');
+
+    if (!canvas || !img) {
+      showStatus('PDF viewer not available', 'warn');
+      return;
+    }
+
+    const color = FIELD_COLORS[colorIdx % FIELD_COLORS.length];
+    colorIdx++;
+
+    // ── Path A: stored bbox from extraction ───────────────────────────────
+    // Instant highlight using stored fractional bbox coordinates.
+    // Skip for composite values (containing " / " / " — " / " | ") — the stored
+    // bbox may have been computed from the PREFIX segment (e.g. a routing code)
+    // rather than the actual field text.  The live search (Path C) now correctly
+    // prioritises the right-hand segment, so always use that path for composites.
+    const isComposite = value.includes(' / ') || value.includes(' — ') || value.includes(' | ');
+    if (!isComposite && storedPage !== null && storedBbox && storedBbox.length === 4) {
+      if (storedPage === currentPage) {
+        syncCanvasSize();   // ensure canvas matches current image dimensions
+        clearHighlights();
+        drawBbox(storedBbox, color);
+        showStatus(`✓ Found on page ${storedPage + 1}`, 'success');
+      } else {
+        showStatus(`Jumping to page ${storedPage + 1}…`, 'info');
+        // pendingHighlightAfterLoad is drawn inside onImgLoad() once the new
+        // image finishes loading — avoids any race with the load event.
+        navToPage(storedPage, { bbox: storedBbox, color });
+      }
+      return;
+    }
+
+    // ── Path B: stored page only (no bbox) — jump then live search ────────
+    // NOTE: we use a pendingHighlightAfterLoad CALLBACK rather than `await`-ing
+    // the image load event, because the load can fire synchronously for cached
+    // images before an addEventListener call would be attached, deadlocking the
+    // async function.
+    if (storedPage !== null && storedPage !== currentPage) {
+      showStatus(`Jumping to page ${storedPage + 1}…`, 'info');
+      navToPage(storedPage, { searchValue: value, color });
+      return;
+    }
+
+    // ── Path C: live text search (no stored location, or already on correct page) ─
+    doLiveSearch(value, color);
+  }
+
+  function showStatus(msg, type = 'info') {
+    if (!status) return;
+    status.style.display = 'block';
+    status.textContent = msg;
+    // Colour the bar based on outcome
+    const styles = {
+      success: { border: '2px solid rgba(0,201,122,0.8)',  bg: 'rgba(0,201,122,0.08)',  color: '#00C97A' },
+      warn:    { border: '2px solid rgba(245,166,35,0.8)', bg: 'rgba(245,166,35,0.06)', color: '#F5A623' },
+      error:   { border: '2px solid rgba(255,100,100,0.6)',bg: 'rgba(255,80,80,0.06)',  color: '#FF6464' },
+      info:    { border: '2px solid var(--accent)',        bg: 'rgba(0,201,122,0.07)',  color: 'var(--text)' },
+    };
+    const s = styles[type] || styles.info;
+    status.style.borderTop = s.border;
+    status.style.background = s.bg;
+    status.style.color = s.color;
+  }
+
+  // Wire field-row clicks via addEventListener (avoids inline onclick scoping issues)
+  document.querySelectorAll('.field-row[data-row]').forEach(function(row) {
+    row.addEventListener('click', function() { highlightField(row); });
+  });
+
+  // navToPage must be global for inline page-nav button onclicks
+  window.navToPage = navToPage;
+
+  // ── AI rename suggestions ────────────────────────────────────────────────────
+  async function aiSuggestRenames(docId) {
+    const btn = document.getElementById('ai-rename-btn');
+    if (!btn) return;
+
+    // Collect all rename inputs from the discovery form
+    const renameInputs = document.querySelectorAll(
+      '#discovery-form input[type="text"][name^="rename_"]'
+    );
+    if (!renameInputs.length) return;
+
+    // Build list of unique current values (what the AI sees as field labels)
+    const fieldNames = Array.from(renameInputs).map(inp => inp.value.trim()).filter(Boolean);
+
+    btn.textContent = '⟳ Thinking…';
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+
+    try {
+      const resp = await fetch(`/dashboard/docs/${docId}/suggest-renames`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field_names: fieldNames }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const suggestions = await resp.json();
+
+      if (suggestions.error) {
+        showStatus('AI rename failed: ' + suggestions.error, 'error');
+        return;
+      }
+
+      // Update each rename input with the suggested name
+      let count = 0;
+      renameInputs.forEach(inp => {
+        const original = inp.value.trim();
+        const suggestion = suggestions[original];
+        if (suggestion && suggestion !== original) {
+          inp.value = suggestion;
+          inp.style.borderColor = '#9b59b6';
+          inp.style.background = 'rgba(155,89,182,0.08)';
+          count++;
+        }
+      });
+
+      showStatus(
+        count
+          ? `✨ ${count} field name${count === 1 ? '' : 's'} suggested — review and click Confirm schema to save.`
+          : 'Names already look canonical — no changes suggested.',
+        count ? 'success' : 'info'
+      );
+    } catch (err) {
+      showStatus('AI rename error: ' + err.message, 'error');
+    } finally {
+      btn.textContent = '✨ Suggest names';
+      btn.disabled = false;
+      btn.style.opacity = '';
+    }
+  }
+</script>
+{% endblock %}

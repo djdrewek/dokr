@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}System{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <div class="page-header flex items-center gap-16">
+    <div class="flex-1">
+      <div class="page-title">System &amp; configuration</div>
+      <div class="page-subtitle">AI pipeline modes, integrations, and runtime settings</div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="gap:32px;align-items:flex-start;">
+
+    <!-- Left column: AI pipeline modes -->
+    <div style="display:flex;flex-direction:column;gap:24px;">
+
+      <div class="panel">
+        <div class="panel-title">AI pipeline mode</div>
+        <div class="fs-12 text-muted mb-16">
+          Controls how AI is used at each pipeline stage. Changes take effect on the next document submitted.
+          Resets to FAST on server restart.
+        </div>
+
+        <form hx-post="/dashboard/system/ai-mode"
+              hx-target="#toast-container"
+              hx-swap="beforeend"
+              style="display:flex;flex-direction:column;gap:20px;">
+
+          {% for key, label, desc in [
+            ('classification', 'Classification', 'How document classes are identified'),
+            ('extraction',     'Extraction',     'How field values are extracted from the document'),
+          ] %}
+          <div>
+            <div class="field-label mb-8">{{ label }}</div>
+            <div class="fs-12 text-dim mb-10">{{ desc }}</div>
+            <div class="mode-group">
+              {% for val, tip in [('FAST','Keyword only — no AI call'), ('VALIDATE','Keyword + shadow AI review'), ('AUDIT','AI primary, keyword sanity-check')] %}
+              <div class="mode-opt">
+                <input type="radio" name="{{ key }}" id="{{ key }}_{{ val }}" value="{{ val }}"
+                  {% if ai_mode[key] == val %}checked{% endif %}>
+                <label for="{{ key }}_{{ val }}" title="{{ tip }}">{{ val }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+
+          <div>
+            <div class="field-label mb-8">Governance</div>
+            <div class="fs-12 text-dim mb-10">When GovernanceAgent AI review is triggered</div>
+            <div class="mode-group">
+              {% for val, tip in [('ALWAYS','Run governance on every document'), ('SELECTIVE','Only on low-confidence docs'), ('OFF','Skip governance entirely')] %}
+              <div class="mode-opt">
+                <input type="radio" name="governance" id="gov_{{ val }}" value="{{ val }}"
+                  {% if ai_mode['governance'] == val %}checked{% endif %}>
+                <label for="gov_{{ val }}" title="{{ tip }}">{{ val }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div style="padding-top:4px;">
+            <button type="submit" class="btn btn-primary btn-sm">Save AI mode</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Thresholds -->
+      <div class="panel">
+        <div class="panel-title">Classification thresholds</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          {% for label, val in [
+            ('Min keyword hits (MIN_MATCH_THRESHOLD)', '2'),
+            ('Governance confidence threshold', '35%'),
+            ('Extraction min confidence', cfg.extraction_min_confidence | default(0.6) | string),
+            ('Extraction min required rate', cfg.extraction_min_required_rate | default(0.6) | string),
+            ('Match tolerance (global)', (cfg.match_tolerance_default * 100) | round(1) | string + '%'),
+          ] %}
+          <div class="flex items-center gap-12" style="border-bottom:1px solid var(--border);padding-bottom:10px;">
+            <span class="flex-1 fs-12 text-muted">{{ label }}</span>
+            <span class="mono fs-12 text-accent">{{ val }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="fs-11 text-dim mt-12">
+          To change these values, edit <span class="mono">app/agents/classification.py</span>
+          and <span class="mono">.env</span> then restart the server.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right column: connections + key -->
+    <div style="display:flex;flex-direction:column;gap:24px;">
+
+      <!-- Integration status -->
+      <div class="panel">
+        <div class="panel-title">Integrations</div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+
+          {% for name, connected, note in [
+            ('Anthropic AI (Claude)', api_key_set, 'Used for Tier 3 Vision extraction and GovernanceAgent'),
+            ('SharePoint / Graph API', sp_connected, 'Document archiving after processing'),
+            ('Business Central ERP', bc_connected, 'Purchase order + invoice posting'),
+          ] %}
+          <div style="border:1px solid var(--border);padding:14px 16px;">
+            <div class="flex items-center gap-10 mb-6">
+              <span style="width:8px;height:8px;border-radius:50%;flex:none;
+                background:{% if connected %}var(--accent){% else %}var(--dim){% endif %};"></span>
+              <span class="fw-500 flex-1">{{ name }}</span>
+              <span class="mono fs-11" style="color:{% if connected %}var(--accent){% else %}var(--muted){% endif %};">
+                {% if connected %}Connected{% else %}Stub mode{% endif %}
+              </span>
+            </div>
+            <div class="fs-12 text-dim">{{ note }}</div>
+            {% if not connected %}
+            <div class="fs-11 text-dim mt-6">
+              Configure in <span class="mono">.env</span>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+
+        </div>
+      </div>
+
+      <!-- API key -->
+      <div class="panel">
+        <div class="panel-title">Dokr API key</div>
+        <div class="mono fs-12 text-text" style="margin-bottom:8px;">{{ api_key_preview }}</div>
+        <div class="fs-12 text-dim">
+          Set <span class="mono">DOKR_API_KEY</span> in <span class="mono">.env</span> for production.
+          All <span class="mono">/v1/</span> endpoints require this in the
+          <span class="mono">Authorization: Bearer &lt;key&gt;</span> header.
+        </div>
+      </div>
+
+      <!-- Quick links -->
+      <div class="panel">
+        <div class="panel-title">Developer tools</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          {% for label, url in [
+            ('Interactive API docs (Swagger)', '/docs'),
+            ('ReDoc API reference', '/redoc'),
+            ('Health check', '/health'),
+          ] %}
+          <a href="{{ url }}" target="_blank"
+             class="flex items-center gap-8 fs-12"
+             style="color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:8px;">
+            <span class="flex-1">{{ label }}</span>
+            <span class="text-dim">↗</span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Anthropic model -->
+      <div class="panel">
+        <div class="panel-title">Model config</div>
+        <div class="flex items-center gap-12 mb-8">
+          <span class="fs-12 text-muted flex-1">Anthropic model</span>
+          <span class="mono fs-12 text-text">{{ cfg.anthropic_model }}</span>
+        </div>
+        <div class="flex items-center gap-12">
+          <span class="fs-12 text-muted flex-1">Max file size</span>
+          <span class="mono fs-12 text-text">{{ cfg.max_file_size_mb }} MB</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+{% endblock %}

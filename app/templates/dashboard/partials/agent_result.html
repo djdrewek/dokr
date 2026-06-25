@@ -1,0 +1,414 @@
+{#
+  Renders the current state of an agent run.
+  Context:
+    run          — dict with id, agent_name, status, summary, error, result, created_at, duration_ms
+    agent_label  — human-readable agent name
+    polling      — bool: True if we should keep polling (status is pending/running)
+#}
+
+{% set status = run.status %}
+{% set result = run.result %}
+
+<div
+  id="agent-run-{{ run.id }}"
+  class="result-panel"
+  {% if polling %}
+    hx-get="/dashboard/agents/runs/{{ run.id }}"
+    hx-trigger="every 1500ms"
+    hx-target="#agent-run-{{ run.id }}"
+    hx-swap="outerHTML"
+  {% endif %}
+>
+
+  <!-- ── Status header ──────────────────────────────────────────────── -->
+  <div class="result-header">
+    {% if status == "pending" or status == "running" %}
+      <span class="spin" style="font-size:14px;color:var(--accent);">⟳</span>
+      <span class="fw-500">{{ agent_label }}</span>
+      <span class="fs-12 text-muted">{{ status|title }}…</span>
+      <span style="flex:1;"></span>
+      <span class="mono fs-11 text-dim">{{ run.created_at }}</span>
+
+    {% elif status == "completed" %}
+      <span style="color:var(--accent);font-size:14px;">✓</span>
+      <span class="fw-500">{{ agent_label }}</span>
+      {% if run.duration_ms %}
+        <span class="mono fs-11 text-dim">{{ run.duration_ms }}ms</span>
+      {% endif %}
+      <span style="flex:1;"></span>
+      <span class="mono fs-11 text-dim">{{ run.created_at }}</span>
+
+    {% elif status == "failed" %}
+      <span style="color:var(--danger);font-size:14px;">✗</span>
+      <span class="fw-500 text-danger">{{ agent_label }} — Failed</span>
+      <span style="flex:1;"></span>
+      <span class="mono fs-11 text-dim">{{ run.created_at }}</span>
+    {% endif %}
+  </div>
+
+  <!-- ── Body ──────────────────────────────────────────────────────── -->
+  {% if status == "failed" %}
+    <div class="result-body">
+      <div style="color:var(--danger);font-size:12px;font-family:'JetBrains Mono',monospace;">
+        {{ run.error or "An unknown error occurred." }}
+      </div>
+    </div>
+
+  {% elif status in ["pending", "running"] %}
+    <div class="result-body" style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">
+      Agent is running — results will appear here automatically.
+    </div>
+
+  {% elif result %}
+    <div class="result-body">
+
+      {# ── Summary line ──────────────────────────────────────────── #}
+      {% if run.summary %}
+        <div style="font-size:13px;color:var(--text);margin-bottom:16px;font-weight:500;">
+          {{ run.summary }}
+        </div>
+      {% endif %}
+
+      {# ================================================================
+         EXTRACTION QUALITY AUDIT
+         ================================================================ #}
+      {% if run.agent_name == "extraction_quality_audit" %}
+
+        {# Overall health bar #}
+        {% if result.overall_health is not none %}
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:14px;background:var(--surface-2);border:1px solid var(--border);">
+          <span class="fs-11 text-muted" style="white-space:nowrap;text-transform:uppercase;letter-spacing:0.06em;">Overall Health</span>
+          <div class="health-bar-wrap" style="flex:1;">
+            <div class="health-bar" style="width:{{ result.overall_health }}%;background:{% if result.overall_health >= 80 %}var(--accent){% elif result.overall_health >= 60 %}var(--warn){% else %}var(--danger){% endif %};"></div>
+          </div>
+          <span class="mono fw-600" style="font-size:20px;color:{% if result.overall_health >= 80 %}var(--accent){% elif result.overall_health >= 60 %}var(--warn){% else %}var(--danger){% endif %};">
+            {{ result.overall_health }}<span class="fs-12 text-muted">/100</span>
+          </span>
+        </div>
+        {% endif %}
+
+        {# Per-variant breakdown #}
+        {% if result.variants %}
+          {% for v in result.variants %}
+          <div style="border:1px solid var(--border);margin-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);">
+              <span class="fw-500">{{ v.variant_label }}</span>
+              <span class="mono fs-11 text-dim">{{ v.doc_count }} doc{{ 's' if v.doc_count != 1 }}</span>
+              <span style="flex:1;"></span>
+              {# Health score badge #}
+              <span class="mono fw-600 fs-11" style="color:{% if v.health_score >= 80 %}var(--accent){% elif v.health_score >= 60 %}var(--warn){% else %}var(--danger){% endif %};">
+                {{ v.health_score }}/100
+              </span>
+              <span class="badge" style="color:{% if v.health_score >= 80 %}var(--accent){% elif v.health_score >= 60 %}var(--warn){% else %}var(--danger){% endif %};background:{% if v.health_score >= 80 %}#0D2B1A{% elif v.health_score >= 60 %}#2B1D0A{% else %}#2B0D0D{% endif %};">
+                {% if v.health_score >= 80 %}Good{% elif v.health_score >= 60 %}Review{% else %}Poor{% endif %}
+              </span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-bottom:1px solid var(--border);">
+              <div style="padding:10px 14px;border-right:1px solid var(--border);">
+                <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Confidence</div>
+                <div class="mono fw-500" style="color:{% if v.avg_confidence_pct >= 80 %}var(--accent){% elif v.avg_confidence_pct >= 60 %}var(--warn){% else %}var(--danger){% endif %};">{{ v.avg_confidence_pct }}%</div>
+              </div>
+              <div style="padding:10px 14px;border-right:1px solid var(--border);">
+                <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Field Hit Rate</div>
+                <div class="mono fw-500">{{ v.field_hit_rate_pct }}%</div>
+              </div>
+              <div style="padding:10px 14px;">
+                <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Correction Rate</div>
+                <div class="mono fw-500" style="color:{% if v.correction_rate_pct > 30 %}var(--warn){% else %}var(--text){% endif %};">{{ v.correction_rate_pct }}%</div>
+              </div>
+            </div>
+            {% if v.recommendations %}
+            <div style="padding:10px 14px;">
+              {% for rec in v.recommendations %}
+              <div class="fs-12 text-muted" style="display:flex;align-items:flex-start;gap:6px;{% if not loop.last %}margin-bottom:4px;{% endif %}">
+                <span style="color:{% if 'good' in rec.lower() %}var(--accent){% else %}var(--warn){% endif %};">{% if 'good' in rec.lower() %}✓{% else %}⚠{% endif %}</span>
+                {{ rec }}
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="fs-12 text-muted">No variant data available.</div>
+        {% endif %}
+
+        {# Top recommendations #}
+        {% if result.recommendations %}
+        <div style="margin-top:12px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);">
+          <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Recommendations</div>
+          {% for rec in result.recommendations %}
+          <div class="fs-12" style="margin-bottom:4px;">{{ rec }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+
+      {# ================================================================
+         PAGE SCORE AUDIT
+         ================================================================ #}
+      {% elif run.agent_name == "page_score_audit" %}
+
+        {# Summary row #}
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:20px;">
+          <div style="background:var(--surface-2);padding:12px 16px;">
+            <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Variants Analysed</div>
+            <div class="mono fw-500 fs-20">{{ result.variants_analysed }}</div>
+          </div>
+          <div style="background:var(--surface-2);padding:12px 16px;">
+            <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Pages Skipping</div>
+            <div class="mono fw-500 fs-20 text-accent">{{ result.total_pages_skipping }}</div>
+          </div>
+          <div style="background:var(--surface-2);padding:12px 16px;">
+            <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Cost Saved</div>
+            <div class="mono fw-500 fs-20 text-accent">${{ "%.3f"|format(result.total_cost_saved_usd) }}</div>
+          </div>
+        </div>
+
+        {% for v in result.variants %}
+        <div style="border:1px solid var(--border);margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);">
+            <span class="fw-500">{{ v.variant_label }}</span>
+            <span class="mono fs-11 text-dim">{{ v.instances_seen }} instance{{ 's' if v.instances_seen != 1 }}</span>
+            <span style="flex:1;"></span>
+            {% if v.recommendation == "optimal" %}
+              <span class="badge" style="color:var(--accent);background:#0D2B1A;">Optimal</span>
+            {% elif v.recommendation == "candidates_available" %}
+              <span class="badge" style="color:var(--warn);background:#2B1D0A;">{{ v.skip_candidates|length }} candidate{{ 's' if v.skip_candidates|length != 1 }}</span>
+            {% else %}
+              <span class="badge" style="color:var(--muted);background:var(--surface-2);">Learning…</span>
+            {% endif %}
+          </div>
+
+          {# Per-page table #}
+          <div style="max-height:220px;overflow-y:auto;">
+            {% for pg in v.pages %}
+            <div style="display:flex;align-items:center;gap:12px;padding:7px 14px;border-bottom:1px solid var(--border);{% if not loop.last %}{% endif %}{% if pg.status == 'skipping' %}opacity:0.55;{% endif %}">
+              <span class="mono fs-11 text-dim" style="width:48px;flex-shrink:0;">pg {{ pg.page_1indexed }}</span>
+              <div class="contrib-bar-wrap">
+                <div class="contrib-bar" style="width:{{ pg.contribution_pct }}%;background:{% if pg.contribution_pct == 0 %}var(--danger){% elif pg.contribution_pct >= 80 %}var(--accent){% else %}var(--warn){% endif %};"></div>
+              </div>
+              <span class="mono fs-11" style="width:32px;flex-shrink:0;text-align:right;color:{% if pg.contribution_pct == 0 %}var(--danger){% elif pg.contribution_pct >= 80 %}var(--accent){% else %}var(--warn){% endif %};">{{ pg.contribution_pct }}%</span>
+              <span class="fs-11 text-dim" style="flex:1;font-style:italic;">
+                {% if pg.fields %}{{ pg.fields[:3]|join(', ') }}{% if pg.fields|length > 3 %} +{{ pg.fields|length - 3 }}{% endif %}{% elif pg.status == 'skipping' %}skipping{% else %}no fields{% endif %}
+              </span>
+              {% if pg.status == "skipping" %}
+                <span class="badge" style="color:var(--dim);background:var(--surface-1);font-size:9px;">SKIP</span>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+
+          {% if v.cost_saved_usd > 0 or v.skip_candidates %}
+          <div style="padding:10px 14px;display:flex;gap:16px;align-items:center;">
+            {% if v.cost_saved_usd > 0 %}
+            <span class="fs-12 text-muted">Saved: <span class="mono text-accent">${{ "%.4f"|format(v.cost_saved_usd) }}/run</span></span>
+            {% endif %}
+            {% if v.skip_candidates %}
+            <span class="fs-12 text-muted">Skip candidates: <span class="mono text-warn">pg {{ v.skip_candidates|join(', ') }}</span> — learning in progress</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+          <div class="fs-12 text-muted">No page profiles found.</div>
+        {% endfor %}
+
+        {% if result.recommendations %}
+        <div style="margin-top:8px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);">
+          {% for rec in result.recommendations %}
+          <div class="fs-12" style="margin-bottom:4px;">{{ rec }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+
+      {# ================================================================
+         FIELD USAGE AUDIT
+         ================================================================ #}
+      {% elif run.agent_name == "field_usage_audit" %}
+
+        {# Top-line counts #}
+        {% if result.total_unused_fields > 0 or result.total_unreliable_fields > 0 %}
+        <div style="display:flex;gap:12px;margin-bottom:18px;">
+          {% if result.total_unused_fields > 0 %}
+          <div style="padding:10px 14px;background:#2B0D0D;border:1px solid var(--danger);">
+            <span class="mono fw-600 fs-18 text-danger">{{ result.total_unused_fields }}</span>
+            <span class="fs-12 text-muted" style="margin-left:6px;">unused field(s)</span>
+          </div>
+          {% endif %}
+          {% if result.total_unreliable_fields > 0 %}
+          <div style="padding:10px 14px;background:#2B1D0A;border:1px solid var(--warn);">
+            <span class="mono fw-600 fs-18 text-warn">{{ result.total_unreliable_fields }}</span>
+            <span class="fs-12 text-muted" style="margin-left:6px;">unreliable field(s)</span>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% for v in result.variants %}
+        <div style="border:1px solid var(--border);margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);">
+            <span class="fw-500">{{ v.variant_label }}</span>
+            <span class="mono fs-11 text-dim">{{ v.schema_fields }} schema fields · {{ v.docs_sampled }} docs</span>
+            <span style="flex:1;"></span>
+            {% if v.unused_fields %}
+              <span class="badge" style="color:var(--danger);background:#2B0D0D;">{{ v.unused_fields|length }} unused</span>
+            {% else %}
+              <span class="badge" style="color:var(--accent);background:#0D2B1A;">✓ Healthy</span>
+            {% endif %}
+          </div>
+
+          {# Field table #}
+          <div style="border-bottom:1px solid var(--border);padding:6px 14px;display:flex;gap:12px;background:var(--bg);">
+            <span class="col-head" style="flex:2;">Field</span>
+            <span class="col-head" style="flex:1.5;">Extraction Rate</span>
+            <span class="col-head" style="flex:1;">Confidence</span>
+            <span class="col-head" style="flex:0.8;">Status</span>
+          </div>
+          {% for f in v.fields %}
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:{% if not loop.last %}1px solid var(--border){% else %}none{% endif %};">
+            <span class="mono fs-12" style="flex:2;color:{% if f.status == 'unused' %}var(--danger){% elif f.status == 'unreliable' %}var(--warn){% else %}var(--text){% endif %};">{{ f.field }}</span>
+            <div style="flex:1.5;display:flex;align-items:center;gap:8px;">
+              <div class="conf-bar-wrap" style="max-width:60px;">
+                <div class="conf-bar" style="width:{{ f.extraction_pct }}%;background:{% if f.extraction_pct < 10 %}var(--danger){% elif f.extraction_pct < 50 %}var(--warn){% else %}var(--accent){% endif %};"></div>
+              </div>
+              <span class="mono fs-11">{{ f.extraction_pct }}%</span>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;gap:8px;">
+              <div class="conf-bar-wrap" style="max-width:50px;">
+                <div class="conf-bar" style="width:{{ f.avg_confidence_pct }}%;"></div>
+              </div>
+              <span class="mono fs-11">{{ f.avg_confidence_pct }}%</span>
+            </div>
+            <span class="fs-11 status-{{ f.status }}" style="flex:0.8;font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;">{{ f.status }}</span>
+          </div>
+          {% endfor %}
+
+          {% if v.recommendations %}
+          <div style="padding:10px 14px;border-top:1px solid var(--border);">
+            {% for rec in v.recommendations %}
+            <div class="fs-12 text-muted" style="{% if not loop.last %}margin-bottom:4px;{% endif %}">{{ rec }}</div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+          <div class="fs-12 text-muted">No variants with confirmed schemas found.</div>
+        {% endfor %}
+
+        {% if result.recommendations %}
+        <div style="margin-top:8px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);">
+          {% for rec in result.recommendations %}
+          <div class="fs-12" style="margin-bottom:4px;">{{ rec }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+
+      {# ================================================================
+         COST OPTIMISATION REPORT
+         ================================================================ #}
+      {% elif run.agent_name == "cost_optimisation_report" %}
+
+        {# Key metrics grid #}
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:20px;">
+          <div style="background:var(--surface-2);padding:16px 18px;">
+            <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Cost Saved (to date)</div>
+            <div class="mono fw-600" style="font-size:28px;color:var(--accent);">${{ "%.3f"|format(result.cost_saved_usd) }}</div>
+            <div class="fs-11 text-dim" style="margin-top:4px;">{{ result.tokens_saved_estimate|default(0)|int }} tokens saved</div>
+          </div>
+          <div style="background:var(--surface-2);padding:16px 18px;">
+            <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Cost Reduction</div>
+            <div class="mono fw-600" style="font-size:28px;color:{% if result.pct_reduction > 30 %}var(--accent){% else %}var(--text){% endif %};">
+              {{ result.pct_reduction }}%
+            </div>
+            <div class="fs-11 text-dim" style="margin-top:4px;">vs. full-document baseline</div>
+          </div>
+          <div style="background:var(--surface-2);padding:16px 18px;">
+            <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Annual Projection</div>
+            <div class="mono fw-600" style="font-size:28px;color:var(--purple);">${{ "%.2f"|format(result.annual_projected_saving_usd) }}</div>
+            <div class="fs-11 text-dim" style="margin-top:4px;">at {{ result.weekly_docs_avg }} docs/week</div>
+          </div>
+          <div style="background:var(--surface-2);padding:16px 18px;">
+            <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Total Documents</div>
+            <div class="mono fw-600" style="font-size:28px;">{{ result.total_docs_processed }}</div>
+            <div class="fs-11 text-dim" style="margin-top:4px;">{{ result.docs_with_page_meta }} with page metadata</div>
+          </div>
+        </div>
+
+        {# Page stats row #}
+        {% if result.total_pages_seen > 0 %}
+        <div style="padding:14px 16px;background:var(--surface-2);border:1px solid var(--border);margin-bottom:16px;">
+          <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Page Efficiency</div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="flex:1;">
+              <div class="fs-11 text-muted" style="margin-bottom:4px;">Pages Sampled</div>
+              <div style="height:6px;background:var(--border-2);">
+                <div style="height:100%;background:var(--accent);width:{{ ((result.total_pages_sampled / result.total_pages_seen) * 100)|int }}%;"></div>
+              </div>
+              <div class="fs-11 text-dim" style="margin-top:3px;">
+                {{ result.total_pages_sampled }} of {{ result.total_pages_seen }} pages
+                ({{ ((result.total_pages_sampled / result.total_pages_seen) * 100)|int }}%)
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="fs-10 text-muted">Skipped</div>
+              <div class="mono fw-600 fs-18 text-accent">{{ result.total_pages_skipped }}</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        {# Variant stage breakdown #}
+        {% if result.variants_by_stage %}
+        <div style="padding:14px 16px;background:var(--surface-2);border:1px solid var(--border);margin-bottom:16px;">
+          <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Variant Learning Stages</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            {% for stage, count in result.variants_by_stage.items() %}
+            <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+              <span class="mono fw-600" style="color:{% if stage == 'LEARNED' %}var(--accent){% elif stage == 'LEARNING' %}var(--warn){% else %}var(--dim){% endif %};">{{ count }}</span>
+              <span class="fs-11 text-muted">{{ stage }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# Cost per doc comparison #}
+        {% if result.baseline_cost_per_doc_usd > 0 %}
+        <div style="padding:14px 16px;background:var(--surface-2);border:1px solid var(--border);margin-bottom:16px;">
+          <div class="fs-10 text-muted" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Cost Per Document</div>
+          <div style="display:flex;gap:24px;">
+            <div>
+              <div class="fs-11 text-dim" style="margin-bottom:2px;">Baseline (all pages)</div>
+              <div class="mono fw-500 fs-14">${{ "%.4f"|format(result.baseline_cost_per_doc_usd) }}</div>
+            </div>
+            <div style="display:flex;align-items:center;color:var(--dim);">→</div>
+            <div>
+              <div class="fs-11 text-accent" style="margin-bottom:2px;">Current (with skipping)</div>
+              <div class="mono fw-600 fs-14 text-accent">${{ "%.4f"|format(result.actual_cost_per_doc_usd) }}</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if result.skip_candidate_count > 0 %}
+        <div style="padding:12px 14px;background:#2B1D0A;border:1px solid var(--warn);">
+          <div class="fs-12 text-warn">
+            {{ result.skip_candidate_count }} additional skip candidate(s) identified across variants.
+            Estimated additional saving: <span class="mono">${{ "%.4f"|format(result.skip_candidate_potential_saving_usd) }}/run</span>.
+            These will be automatically learned as more documents are processed.
+          </div>
+        </div>
+        {% endif %}
+
+      {% else %}
+        {# Fallback: show raw summary only #}
+        <div class="fs-12 text-muted">{{ run.summary or "Run completed." }}</div>
+      {% endif %}
+
+    </div>
+  {% endif %}
+
+</div>

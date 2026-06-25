@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Discovery{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <div class="page-header flex items-center gap-16">
+    <div class="flex-1">
+      <div class="page-title">Discovery queue</div>
+      <div class="page-subtitle">
+        {{ total }} candidate{% if total != 1 %}s{% endif %} — documents the AI couldn't classify into a known type
+      </div>
+    </div>
+  </div>
+
+  {% if total == 0 %}
+  <div style="padding:60px;text-align:center;">
+    <div class="mono fs-12 text-dim">No new document types discovered</div>
+    <div class="fs-12 text-muted mt-8">All submitted documents map to known classes</div>
+  </div>
+  {% else %}
+  <div id="discovery-list">
+    {% include "dashboard/partials/discovery_rows.html" %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

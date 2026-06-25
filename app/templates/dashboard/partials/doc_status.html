@@ -1,0 +1,113 @@
+{% if duplicate is defined and duplicate %}
+<div style="margin-bottom:12px;">
+  <span class="badge" style="color:var(--warn);background:#2B1D0A;font-size:11px;">EXACT DUPLICATE</span>
+  <span class="fs-12 text-muted" style="margin-left:8px;">This file has been submitted before</span>
+</div>
+{% endif %}
+
+<div class="panel"
+  {% if not is_terminal %}
+    hx-get="/dashboard/partials/doc-status/{{ doc.id }}"
+    hx-trigger="every 3s"
+    hx-swap="outerHTML"
+  {% endif %}>
+
+  <!-- Header row -->
+  <div class="flex items-center gap-12 mb-16">
+    <span class="badge" style="color:{{ doc.status_color }};background:{{ doc.status_bg }};font-size:12px;">
+      {{ doc.status | replace('_', ' ') }}
+    </span>
+    {% if not is_terminal %}
+    <span class="spinner" style="flex:none;"></span>
+    <span class="mono fs-11 text-muted">Processing…</span>
+    {% else %}
+    {% if doc.has_pdf %}
+    <a href="/dashboard/docs/{{ doc.id }}" class="btn btn-primary btn-sm">View document →</a>
+    {% endif %}
+    {% endif %}
+    <span class="mono fs-11 text-dim" style="margin-left:auto;">{{ doc.id[-12:] }}</span>
+  </div>
+
+  <!-- File info -->
+  <div class="grid-2" style="gap:12px;margin-bottom:16px;">
+    <div>
+      <div class="fs-11 text-dim mb-4">File</div>
+      <div class="mono fs-12 text-text truncate">{{ doc.file_name }}</div>
+    </div>
+    <div>
+      <div class="fs-11 text-dim mb-4">Document class</div>
+      <div class="flex items-center gap-8">
+        <span class="mono fs-12 text-muted">{{ doc.document_class }}</span>
+        {% if doc.class_name != '—' %}
+        <span class="fs-12 text-dim">· {{ doc.class_name }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <div>
+      <div class="fs-11 text-dim mb-4">Confidence</div>
+      <div class="flex items-center gap-8">
+        <div class="conf-bar-wrap" style="width:60px;">
+          <div class="conf-bar" style="width:{{ doc.conf_pct }}%;"></div>
+        </div>
+        <span class="mono fs-12">{{ doc.confidence }}</span>
+      </div>
+    </div>
+    <div>
+      <div class="fs-11 text-dim mb-4">Fields extracted</div>
+      <div class="mono fs-12">{{ doc.fields | length }}</div>
+    </div>
+  </div>
+
+  {% if doc.suggested_class %}
+  <div style="padding:8px 12px;background:var(--accent-dim);margin-bottom:16px;">
+    <span class="fs-11 text-muted">Suggested class: </span>
+    <span class="mono fs-12 text-accent">{{ doc.suggested_class }}</span>
+  </div>
+  {% endif %}
+
+  <!-- Governance result -->
+  {% if doc.gov and doc.gov.verdict %}
+  <div class="divider"></div>
+  <div class="flex items-center gap-8 mb-12">
+    <span class="fs-11 text-dim">Governance:</span>
+    <span class="badge" style="
+      {% if doc.gov.verdict == 'CORRECT' %}color:var(--accent);background:#0D2B1A;
+      {% elif doc.gov.verdict == 'WRONG_CLASS' %}color:var(--warn);background:#2B1D0A;
+      {% else %}color:var(--purple);background:#161B3A;{% endif %}">
+      {{ doc.gov.verdict }}
+    </span>
+    <span class="fs-12 text-muted truncate">{{ doc.gov.get('reasoning','')[:90] }}</span>
+  </div>
+  {% endif %}
+
+  <!-- Extracted fields -->
+  {% if doc.fields %}
+  <div class="divider"></div>
+  <div class="panel-title">Extracted fields</div>
+  <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
+    {% for f in doc.fields %}
+    <div class="flex gap-12" style="border-bottom:1px solid var(--border);padding-bottom:6px;">
+      <span class="mono text-muted" style="flex:1.2;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;">{{ f.name }}</span>
+      <span class="mono text-text" style="flex:2;font-size:12px;">{{ f.value }}</span>
+      <span class="mono text-dim" style="flex:0.5;font-size:11px;text-align:right;">{{ f.confidence }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Pipeline event trail -->
+  {% if doc.events %}
+  <div class="divider"></div>
+  <div class="panel-title">Pipeline trail</div>
+  <div style="display:flex;flex-direction:column;gap:4px;margin-top:10px;">
+    {% for ev in doc.events %}
+    <div class="flex gap-8 items-center" style="font-size:11px;">
+      <span class="mono text-dim" style="flex:none;width:64px;">{{ ev.ts }}</span>
+      <span class="chip" style="flex:none;font-size:9px;padding:1px 5px;">{{ ev.state }}</span>
+      <span class="text-dim truncate">{{ ev.agent }} — {{ ev.detail }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>

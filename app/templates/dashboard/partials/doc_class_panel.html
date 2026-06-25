@@ -1,0 +1,463 @@
+{#
+  Partial: doc_class_panel.html
+  Right-panel for a selected document class (category summary).
+  Two tabs: Overview (variants + recent docs) and Classifier (keyword rules + notes).
+  Swapped into #doc-panel via HTMX.
+#}
+
+{% set stage_order = {'OPTIMISED': 5, 'LEARNED': 4, 'LEARNED_PROPOSED': 3, 'LEARNING': 2, 'ZERO_SHOT': 1} %}
+
+{# ── Sticky header ────────────────────────────────────────────────── #}
+<div style="border-bottom:1px solid var(--border);padding:14px 20px;
+            display:flex;align-items:center;justify-content:space-between;gap:12px;
+            position:sticky;top:0;z-index:10;background:var(--nav-bg);">
+  <div>
+    <div style="font-size:17px;font-weight:600;color:var(--text);letter-spacing:-0.01em;">
+      {{ dc.name }}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+      {{ variants|length }} variant{{ variants|length != 1 and 's' or '' }}
+      &middot; {{ total_docs }} document{{ total_docs != 1 and 's' or '' }}
+      {% if best_stage %}
+      &middot;
+      <span class="chip mono
+        {% if best_stage == 'OPTIMISED' %}stage-opt
+        {% elif best_stage in ('LEARNED','LEARNED_PROPOSED') %}stage-learned
+        {% elif best_stage == 'LEARNING' %}stage-learning
+        {% else %}stage-zero{% endif %}"
+        style="font-size:9px;padding:1px 5px;">{{ best_stage }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div style="flex:none;display:flex;gap:8px;align-items:center;">
+    <button class="btn btn-sm"
+            style="background:transparent;border:1px solid var(--danger);color:var(--danger);opacity:0.75;"
+            hx-post="/dashboard/documents/class/{{ dc.id }}/reset"
+            hx-target="#toast-container"
+            hx-swap="beforeend"
+            hx-confirm="Delete ALL documents and variants for '{{ dc.name }}'? This cannot be undone."
+            title="Wipe all learned data — re-learn from scratch">
+      ↺ Reset
+    </button>
+    <label class="btn btn-secondary btn-sm" style="cursor:pointer;display:flex;align-items:center;gap:6px;">
+      ↑ Upload
+      <input type="file" accept=".pdf"
+             hx-post="/dashboard/documents/ingest/{{ dc.id }}"
+             hx-target="#toast-container"
+             hx-swap="beforeend"
+             hx-encoding="multipart/form-data"
+             name="file"
+             style="display:none;"
+             onchange="htmx.trigger(this, 'change')">
+    </label>
+  </div>
+</div>
+
+{# ── Stats strip ──────────────────────────────────────────────────── #}
+<div style="display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--border);
+            background:var(--surface-2);">
+  {% for label, value in [
+      ('Documents', total_docs),
+      ('Variants',  variants|length),
+      ('Fields confirmed', total_confirmed_fields),
+  ] %}
+  <div style="padding:12px 20px;{% if not loop.last %}border-right:1px solid var(--border);{% endif %}">
+    <div style="font-size:22px;font-weight:600;color:var(--text);font-family:'JetBrains Mono',monospace;letter-spacing:-0.02em;">
+      {{ value }}
+    </div>
+    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;margin-top:2px;">
+      {{ label }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ── Tabs ─────────────────────────────────────────────────────────── #}
+<div style="display:flex;border-bottom:1px solid var(--border);background:var(--surface-2);gap:0;">
+  {% for tab_id, tab_label in [('overview','Overview'),('classifier','Classifier')] %}
+  <button id="dctab-{{ tab_id }}-btn"
+          onclick="dcSwitchTab('{{ tab_id }}')"
+          style="background:transparent;border:none;border-bottom:2px solid {% if loop.first %}var(--accent){% else %}transparent{% endif %};
+                 color:{% if loop.first %}var(--text){% else %}var(--muted){% endif %};
+                 font-size:12px;padding:0 20px;height:38px;cursor:pointer;
+                 font-family:inherit;transition:color 0.15s,border-color 0.15s;white-space:nowrap;"
+          data-active="{% if loop.first %}1{% endif %}">
+    {{ tab_label }}
+    {% if tab_id == 'classifier' %}
+    <span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);margin-left:4px;">
+      {{ (classifier.keywords or [])|length }} kw
+    </span>
+    {% endif %}
+  </button>
+  {% endfor %}
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   TAB 1 — OVERVIEW  (variants + recent docs)
+   ══════════════════════════════════════════════════════════════════════ #}
+<div id="dctab-overview" style="padding:20px;">
+
+{# ── Variant cards ────────────────────────────────────────────────── #}
+{% if variants %}
+<div style="font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;
+            letter-spacing:0.07em;margin-bottom:12px;">
+  Variants — click to configure
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:28px;">
+  {% for v in variants %}
+  {% set stage_pct = {'ZERO_SHOT': 5, 'LEARNING': 30, 'LEARNED_PROPOSED': 55, 'LEARNED': 80, 'OPTIMISED': 100} %}
+  {% set pct = stage_pct.get(v.learning_stage, 5) %}
+  <div style="background:var(--surface-2);border:1px solid var(--border);
+              padding:14px 16px;cursor:pointer;transition:border-color 0.15s;"
+       onmouseover="this.style.borderColor='var(--accent)'"
+       onmouseout="this.style.borderColor='var(--border)'"
+       hx-get="/dashboard/documents/variant/{{ v.id }}/panel"
+       hx-target="#doc-panel"
+       hx-swap="innerHTML"
+       onclick="selectRow('variant-{{ v.id }}')">
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:500;color:var(--text);
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ v.label }}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;">
+          {{ v.doc_count }} doc{{ v.doc_count != 1 and 's' or '' }}
+          &middot; {{ v.field_count }} field{{ v.field_count != 1 and 's' or '' }} confirmed
+          {% if v.last_activity != '—' %}
+          &middot; last {{ v.last_activity }}
+          {% endif %}
+        </div>
+      </div>
+      <span class="chip mono
+        {% if v.learning_stage == 'OPTIMISED' %}stage-opt
+        {% elif v.learning_stage in ('LEARNED','LEARNED_PROPOSED') %}stage-learned
+        {% elif v.learning_stage == 'LEARNING' %}stage-learning
+        {% else %}stage-zero{% endif %}"
+        style="font-size:9px;padding:2px 6px;flex:none;">
+        {{ v.learning_stage }}
+      </span>
+    </div>
+
+    {# Learning progress bar #}
+    <div style="height:3px;background:var(--border-2);">
+      <div style="height:100%;width:{{ pct }}%;background:
+        {% if v.learning_stage == 'OPTIMISED' %}var(--purple)
+        {% elif v.learning_stage in ('LEARNED','LEARNED_PROPOSED') %}var(--accent)
+        {% elif v.learning_stage == 'LEARNING' %}var(--warn)
+        {% else %}var(--dim){% endif %};transition:width 0.3s;"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:4px;">
+      {% for s in ['ZERO_SHOT','LEARNING','LEARNED','OPTIMISED'] %}
+      <span style="font-size:8px;color:{% if v.learning_stage == s %}var(--muted){% else %}var(--dim){% endif %};
+                   font-family:'JetBrains Mono',monospace;opacity:0.7;">{{ s }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div style="border:1px dashed var(--border);padding:36px;text-align:center;color:var(--dim);margin-bottom:24px;">
+  <div style="font-size:24px;margin-bottom:10px;">📂</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">No variants discovered yet</div>
+  <div style="font-size:11px;line-height:1.7;max-width:300px;margin:0 auto 14px;">
+    Upload a document above — the system will analyse it, extract all fields,
+    and create a variant automatically.
+  </div>
+</div>
+{% endif %}
+
+{# ── Recent documents ─────────────────────────────────────────────── #}
+{% if recent %}
+<div style="font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;
+            letter-spacing:0.07em;margin-bottom:10px;">
+  Recent documents
+</div>
+<div class="table-wrap">
+  <div class="table-header" style="grid-template-columns:1fr 110px 90px 32px 80px;">
+    <span class="col-head">File</span>
+    <span class="col-head">Variant</span>
+    <span class="col-head">Date</span>
+    <span class="col-head" title="Signature">✍</span>
+    <span class="col-head">Status</span>
+  </div>
+  {% for d in recent %}
+  <div class="table-row" style="display:grid;grid-template-columns:1fr 110px 90px 32px 80px;align-items:center;">
+    <a href="/dashboard/docs/{{ d.id }}" class="truncate"
+       style="font-size:12px;color:var(--accent);">{{ d.file_name }}</a>
+    <span style="font-size:10px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          title="{{ d.variant_label or '—' }}">
+      {{ d.variant_label or '—' }}
+    </span>
+    <span class="mono fs-11 text-dim">{{ d.created_at }}</span>
+    <span style="font-size:12px;"
+          title="{% if d.is_signed is none %}Not checked{% elif d.is_signed %}Signed{% else %}Unsigned{% endif %}">
+      {% if d.is_signed is none %}—
+      {% elif d.is_signed %}<span style="color:#00C97A;">✍</span>
+      {% else %}<span style="color:var(--muted);">○</span>
+      {% endif %}
+    </span>
+    <span>
+      <span class="badge" style="background:{{ d.status_color }}22;color:{{ d.status_color }};font-size:10px;">
+        {{ d.status }}
+      </span>
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+</div>{# end dctab-overview #}
+
+{# ══════════════════════════════════════════════════════════════════════
+   TAB 2 — CLASSIFIER
+   Keyword rules, negative keywords, priority, notes.
+   ══════════════════════════════════════════════════════════════════════ #}
+<div id="dctab-classifier" style="display:none;">
+
+<form hx-post="/dashboard/documents/class/{{ dc.id }}/classifier"
+      hx-target="#toast-container"
+      hx-swap="beforeend">
+
+  {# ── How the classifier works callout ──────────────────────────── #}
+  <div style="padding:14px 20px;background:var(--surface-2);border-bottom:1px solid var(--border);
+              font-size:11px;color:var(--muted);line-height:1.6;">
+    The classifier scans each incoming document's text and counts how many
+    <strong style="color:var(--text)">trigger keywords</strong> appear.
+    The document class with the most matches (above the minimum threshold) wins.
+    <strong style="color:var(--text)">Negative keywords</strong> subtract from the score.
+    <strong style="color:var(--text)">Priority</strong> breaks ties.
+  </div>
+
+  {# ── Trigger keywords ──────────────────────────────────────────── #}
+  <div style="padding:18px 20px;border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text);">Trigger keywords</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+          Words or phrases the AI looks for to identify this document type.
+          Lowercase; spaces allowed. Press Enter or comma to add.
+        </div>
+      </div>
+      <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;"
+            id="kw-count">{{ (classifier.keywords or [])|length }}</span>
+    </div>
+
+    {# Hidden input — comma-joined list submitted with form #}
+    <input type="hidden" id="kw-hidden" name="keywords"
+           value="{{ (classifier.keywords or []) | join(',') }}">
+
+    <div id="kw-wrap"
+         style="display:flex;flex-wrap:wrap;gap:5px;padding:10px;
+                background:var(--surface-1);border:1px solid var(--border);min-height:44px;">
+      {% for kw in (classifier.keywords or []) %}
+      <span class="kw-badge"
+            data-kw="{{ kw }}"
+            style="display:inline-flex;align-items:center;gap:3px;
+                   font-size:11px;font-family:'JetBrains Mono',monospace;
+                   background:var(--accent-dim);border:1px solid var(--accent);
+                   color:var(--accent);padding:2px 6px 2px 8px;">
+        {{ kw }}
+        <button type="button" onclick="dcRemoveKw('{{ kw }}')"
+                style="background:transparent;border:none;color:var(--accent);cursor:pointer;
+                       font-size:12px;line-height:1;padding:0;margin:0;opacity:0.7;">×</button>
+      </span>
+      {% endfor %}
+
+      {# Inline add input #}
+      <input type="text" id="kw-add-input"
+             placeholder="+ add keyword…"
+             onkeydown="dcAddKwOnKey(event, 'kw')"
+             style="font-size:11px;font-family:'JetBrains Mono',monospace;
+                    background:transparent;border:1px dashed var(--border-2);
+                    color:var(--muted);padding:2px 8px;min-width:140px;flex:1;outline:none;"
+             onfocus="this.style.borderColor='var(--accent)';this.style.color='var(--text)'"
+             onblur="this.style.borderColor='var(--border-2)';this.style.color='var(--muted)'">
+    </div>
+  </div>
+
+  {# ── Negative keywords ─────────────────────────────────────────── #}
+  <div style="padding:18px 20px;border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text);">Negative keywords</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+          Words that <em>reduce</em> the score for this type — useful to prevent false matches.
+        </div>
+      </div>
+      <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;"
+            id="neg-count">{{ (classifier.negative_keywords or [])|length }}</span>
+    </div>
+
+    <input type="hidden" id="neg-hidden" name="negative_keywords"
+           value="{{ (classifier.negative_keywords or []) | join(',') }}">
+
+    <div id="neg-wrap"
+         style="display:flex;flex-wrap:wrap;gap:5px;padding:10px;
+                background:var(--surface-1);border:1px solid var(--border);min-height:44px;">
+      {% for kw in (classifier.negative_keywords or []) %}
+      <span class="neg-badge"
+            data-kw="{{ kw }}"
+            style="display:inline-flex;align-items:center;gap:3px;
+                   font-size:11px;font-family:'JetBrains Mono',monospace;
+                   background:#2B1010;border:1px solid var(--danger);
+                   color:var(--danger);padding:2px 6px 2px 8px;">
+        {{ kw }}
+        <button type="button" onclick="dcRemoveNeg('{{ kw }}')"
+                style="background:transparent;border:none;color:var(--danger);cursor:pointer;
+                       font-size:12px;line-height:1;padding:0;margin:0;opacity:0.7;">×</button>
+      </span>
+      {% endfor %}
+
+      <input type="text" id="neg-add-input"
+             placeholder="+ add negative keyword…"
+             onkeydown="dcAddKwOnKey(event, 'neg')"
+             style="font-size:11px;font-family:'JetBrains Mono',monospace;
+                    background:transparent;border:1px dashed var(--border-2);
+                    color:var(--muted);padding:2px 8px;min-width:160px;flex:1;outline:none;"
+             onfocus="this.style.borderColor='var(--danger)';this.style.color='var(--text)'"
+             onblur="this.style.borderColor='var(--border-2)';this.style.color='var(--muted)'">
+    </div>
+  </div>
+
+  {# ── Priority + Notes ──────────────────────────────────────────── #}
+  <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:grid;
+              grid-template-columns:120px 1fr;gap:20px;align-items:start;">
+    <div>
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Priority</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
+        Tiebreaker when two classes score equally. Higher number wins.
+      </div>
+      <input type="number" name="priority" min="1" max="20"
+             value="{{ classifier.priority or 3 }}"
+             style="width:60px;padding:6px 8px;font-size:13px;font-family:'JetBrains Mono',monospace;
+                    background:var(--surface-1);border:1px solid var(--border);color:var(--text);text-align:center;"
+             onfocus="this.style.borderColor='var(--accent)'"
+             onblur="this.style.borderColor='var(--border)'">
+    </div>
+    <div>
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Operator notes</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
+        Notes about this document type — what makes it unique, common gotchas, edge cases.
+      </div>
+      <textarea name="notes" rows="4"
+                style="width:100%;padding:8px;font-size:12px;line-height:1.6;
+                       background:var(--surface-1);border:1px solid var(--border);
+                       color:var(--text);resize:vertical;box-sizing:border-box;"
+                onfocus="this.style.borderColor='var(--accent)'"
+                onblur="this.style.borderColor='var(--border)'"
+                placeholder="e.g. 'This is always a multi-page document. The TML/ prefix in the PO number is the strongest signal. Annexure pages add packing/quality clauses that can confuse the classifier — these are handled by the override rules.'"
+                >{{ classifier.notes or '' }}</textarea>
+    </div>
+  </div>
+
+  {# ── AI Observations (read-only) ───────────────────────────────── #}
+  {% if classifier.ai_observations %}
+  <div style="padding:18px 20px;border-bottom:1px solid var(--border);">
+    <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">
+      AI observations
+      <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">auto-generated · read only</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.7;white-space:pre-wrap;
+                background:var(--surface-2);padding:10px 14px;border:1px solid var(--border);">{{ classifier.ai_observations }}</div>
+  </div>
+  {% endif %}
+
+  {# ── Save ──────────────────────────────────────────────────────── #}
+  <div style="padding:14px 20px;background:var(--surface-2);border-top:1px solid var(--border);
+              display:flex;gap:10px;align-items:center;">
+    <button type="submit" class="btn btn-primary btn-sm">✓ Save classifier profile</button>
+    <span style="font-size:11px;color:var(--dim);">
+      Changes take effect immediately on the next document ingested.
+    </span>
+  </div>
+
+</form>
+</div>{# end dctab-classifier #}
+
+<style>
+.stage-zero     { background: #1A2520; color: var(--muted); }
+.stage-learning { background: #2B1D0A; color: var(--warn); }
+.stage-learned  { background: var(--accent-dim); color: var(--accent); }
+.stage-opt      { background: #161B3A; color: var(--purple); }
+html[data-theme="light"] .stage-zero     { background: #E6EFEA; color: var(--muted); }
+html[data-theme="light"] .stage-learning { background: #FEF3E2; color: var(--warn); }
+html[data-theme="light"] .stage-learned  { background: var(--accent-dim); color: var(--accent); }
+html[data-theme="light"] .stage-opt      { background: #ECEEFF; color: var(--purple); }
+</style>
+
+<script>
+/* ── Tab switching ──────────────────────────────────────────────── */
+function dcSwitchTab(name) {
+  ['overview','classifier'].forEach(t => {
+    document.getElementById('dctab-' + t).style.display = t === name ? 'block' : 'none';
+    const btn = document.getElementById('dctab-' + t + '-btn');
+    if (btn) {
+      const active = t === name;
+      btn.style.borderBottomColor = active ? 'var(--accent)' : 'transparent';
+      btn.style.color = active ? 'var(--text)' : 'var(--muted)';
+      btn.dataset.active = active ? '1' : '';
+    }
+  });
+}
+
+/* ── Keyword management (shared for kw and neg) ─────────────────── */
+function _dcGetList(prefix) {
+  const h = document.getElementById(prefix + '-hidden');
+  if (!h || !h.value) return [];
+  return h.value.split(',').map(s => s.trim()).filter(Boolean);
+}
+function _dcSetList(prefix, list) {
+  const h = document.getElementById(prefix + '-hidden');
+  if (h) h.value = list.join(',');
+  const cnt = document.getElementById(prefix + '-count');
+  if (cnt) cnt.textContent = list.length;
+}
+
+function dcRemoveKw(kw) {
+  const wrap = document.getElementById('kw-wrap');
+  wrap && wrap.querySelectorAll('.kw-badge[data-kw="' + kw + '"]').forEach(b => b.remove());
+  _dcSetList('kw', _dcGetList('kw').filter(k => k !== kw));
+}
+function dcRemoveNeg(kw) {
+  const wrap = document.getElementById('neg-wrap');
+  wrap && wrap.querySelectorAll('.neg-badge[data-kw="' + kw + '"]').forEach(b => b.remove());
+  _dcSetList('neg', _dcGetList('neg').filter(k => k !== kw));
+}
+
+function dcAddKwOnKey(event, prefix) {
+  if (event.key !== 'Enter' && event.key !== ',') return;
+  event.preventDefault();
+  const inputEl = event.target;
+  const raw = inputEl.value.trim().toLowerCase();
+  if (!raw) return;
+
+  const current = _dcGetList(prefix);
+  if (current.includes(raw)) { inputEl.value = ''; return; }
+
+  const isNeg = prefix === 'neg';
+  const wrap  = document.getElementById(prefix + '-wrap');
+  const badge = document.createElement('span');
+  badge.className = isNeg ? 'neg-badge' : 'kw-badge';
+  badge.setAttribute('data-kw', raw);
+  badge.style.cssText = 'display:inline-flex;align-items:center;gap:3px;' +
+    'font-size:11px;font-family:JetBrains Mono,monospace;padding:2px 6px 2px 8px;' +
+    (isNeg
+      ? 'background:#2B1010;border:1px solid var(--danger);color:var(--danger);'
+      : 'background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);');
+  const fn = isNeg ? 'dcRemoveNeg' : 'dcRemoveKw';
+  badge.innerHTML = raw +
+    '<button type="button" onclick="' + fn + '(\'' + raw.replace(/'/g, "\\'") + '\')" ' +
+    'style="background:transparent;border:none;color:' +
+    (isNeg ? 'var(--danger)' : 'var(--accent)') +
+    ';cursor:pointer;font-size:12px;line-height:1;padding:0;margin:0;opacity:0.7;">×</button>';
+  wrap.insertBefore(badge, inputEl);
+
+  current.push(raw);
+  _dcSetList(prefix, current);
+  inputEl.value = '';
+}
+</script>

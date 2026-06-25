@@ -1,0 +1,1018 @@
+{% extends "base.html" %}
+{% block title %}API Reference{% endblock %}
+
+{% block extra_styles %}
+/* ── API Docs layout ─────────────────────────────────────────────── */
+.docs-wrap {
+  display: flex;
+  min-height: calc(100vh - 48px);
+}
+
+/* Sidebar */
+.docs-sidebar {
+  width: 220px;
+  flex: none;
+  background: var(--nav-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: sticky;
+  top: 48px;
+  height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.sidebar-section-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  padding: 16px 18px 6px;
+}
+.sidebar-section-label:first-child { padding-top: 4px; }
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 18px;
+  font-size: 12px;
+  color: var(--muted);
+  transition: color 0.1s, background 0.1s;
+  cursor: pointer;
+  text-decoration: none;
+}
+.sidebar-link:hover { color: var(--text); background: rgba(0,201,122,0.04); }
+.sidebar-link.active { color: var(--accent); font-weight: 500; }
+.sidebar-count {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+}
+
+/* Main content */
+.docs-main {
+  flex: 1;
+  padding: 32px 40px;
+  max-width: 900px;
+}
+
+/* Section heading */
+.docs-section {
+  margin-bottom: 48px;
+  scroll-margin-top: 80px;
+}
+.docs-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.docs-section-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.base-url-chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+}
+
+/* Endpoint card */
+.endpoint {
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  background: var(--surface-2);
+}
+.endpoint-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+.endpoint-header:hover { background: rgba(0,201,122,0.04); }
+.method {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 7px;
+  flex: none;
+  min-width: 52px;
+  text-align: center;
+}
+.method-get    { background: rgba(0,201,122,0.12); color: var(--accent); }
+.method-post   { background: rgba(124,132,232,0.15); color: var(--purple); }
+.method-patch  { background: rgba(245,166,35,0.15); color: var(--warn); }
+.method-delete { background: rgba(255,77,77,0.12); color: var(--danger); }
+.endpoint-path {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text);
+  flex: 1;
+}
+.path-param { color: var(--warn); }
+.endpoint-summary {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
+  text-align: right;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.endpoint-chevron {
+  color: var(--dim);
+  font-size: 10px;
+  flex: none;
+  transition: transform 0.2s;
+}
+.endpoint.open .endpoint-chevron { transform: rotate(180deg); }
+
+/* Endpoint body (expanded) */
+.endpoint-body {
+  display: none;
+  border-top: 1px solid var(--border);
+  padding: 20px;
+  background: var(--surface-1);
+}
+.endpoint.open .endpoint-body { display: block; }
+
+.param-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+.param-table th {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  text-align: left;
+  padding: 0 12px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.param-table td {
+  padding: 7px 12px 7px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-size: 12px;
+  color: var(--text);
+}
+.param-table tr:last-child td { border-bottom: none; }
+.param-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.param-type {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--purple);
+  white-space: nowrap;
+}
+.param-req {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 1px 6px;
+  background: rgba(255,77,77,0.1);
+  color: var(--danger);
+}
+.param-opt {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--surface-2);
+  color: var(--dim);
+}
+.param-desc { color: var(--muted); font-size: 12px; line-height: 1.4; }
+
+.subsection-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  margin-bottom: 10px;
+}
+.response-block {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 12px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+  white-space: pre;
+  overflow-x: auto;
+}
+.rk { color: var(--accent); }       /* key */
+.rv { color: var(--purple); }       /* value / type */
+.rc { color: var(--dim); }          /* comment */
+
+.note {
+  background: rgba(0,201,122,0.06);
+  border-left: 2px solid var(--accent);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.note strong { color: var(--text); font-weight: 500; }
+
+/* Hero */
+.docs-hero {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 24px 28px;
+  margin-bottom: 40px;
+}
+.docs-hero-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.docs-hero-sub { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+.hero-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+.hero-meta-item {
+  background: var(--surface-1);
+  padding: 12px 14px;
+}
+.hero-meta-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  margin-bottom: 4px;
+}
+.hero-meta-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text);
+}
+{% endblock %}
+
+{% block content %}
+<div class="docs-wrap">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────── -->
+  <aside class="docs-sidebar">
+    <div class="sidebar-section-label">Overview</div>
+    <a class="sidebar-link" href="#intro">Introduction</a>
+    <a class="sidebar-link" href="#auth">Authentication</a>
+    <a class="sidebar-link" href="#errors">Errors</a>
+    <a class="sidebar-link" href="#pagination">Pagination</a>
+
+    <div class="sidebar-section-label">Endpoints</div>
+    <a class="sidebar-link" href="#documents">Documents <span class="sidebar-count">6</span></a>
+    <a class="sidebar-link" href="#document-classes">Document Classes <span class="sidebar-count">2</span></a>
+    <a class="sidebar-link" href="#variants">Variants <span class="sidebar-count">3</span></a>
+    <a class="sidebar-link" href="#review">Review <span class="sidebar-count">4</span></a>
+    <a class="sidebar-link" href="#instructions">Instructions <span class="sidebar-count">6</span></a>
+    <a class="sidebar-link" href="#shipments">Shipments <span class="sidebar-count">3</span></a>
+    <a class="sidebar-link" href="#webhooks">Webhooks <span class="sidebar-count">6</span></a>
+    <a class="sidebar-link" href="#discovery">Discovery <span class="sidebar-count">3</span></a>
+    <a class="sidebar-link" href="#agents">Agents <span class="sidebar-count">4</span></a>
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────────────── -->
+  <main class="docs-main">
+
+    <!-- Hero -->
+    <div class="docs-hero" id="intro">
+      <div class="docs-hero-title">Dokr API Reference</div>
+      <div class="docs-hero-sub">Documents Orchestrated by Knowledge Recognition — REST API v1</div>
+      <div class="hero-meta-grid">
+        <div class="hero-meta-item">
+          <div class="hero-meta-label">Base URL</div>
+          <div class="hero-meta-value">http://localhost:8000</div>
+        </div>
+        <div class="hero-meta-item">
+          <div class="hero-meta-label">Version prefix</div>
+          <div class="hero-meta-value">/v1</div>
+        </div>
+        <div class="hero-meta-item">
+          <div class="hero-meta-label">Auth</div>
+          <div class="hero-meta-value">None (dev)</div>
+        </div>
+        <div class="hero-meta-item">
+          <div class="hero-meta-label">Content-Type</div>
+          <div class="hero-meta-value">application/json</div>
+        </div>
+        <div class="hero-meta-item">
+          <div class="hero-meta-label">Max file size</div>
+          <div class="hero-meta-value">50 MB</div>
+        </div>
+        <div class="hero-meta-item">
+          <div class="hero-meta-label">OpenAPI</div>
+          <div class="hero-meta-value"><a href="/docs" style="color:var(--accent)">/docs</a> · <a href="/redoc" style="color:var(--accent)">/redoc</a></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auth -->
+    <div class="docs-section" id="auth" style="margin-bottom:32px;">
+      <div class="docs-section-title">Authentication</div>
+      <div class="docs-section-desc">
+        The development server has no authentication gate — all endpoints are open on localhost.
+        To add an API key header for production, add <span class="mono" style="font-size:12px;color:var(--accent);">X-API-Key</span> validation in <span class="mono" style="font-size:12px;">app/main.py</span>.
+      </div>
+    </div>
+
+    <!-- Errors -->
+    <div class="docs-section" id="errors" style="margin-bottom:32px;">
+      <div class="docs-section-title">Error codes</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:0;border:1px solid var(--border);margin-top:8px;">
+        {% for code, meaning in [('400','Bad request — validation failure or malformed body'),('404','Resource not found'),('409','Conflict — duplicate SHA-256 / wrong state for action'),('422','Unprocessable entity — request body schema error'),('500','Internal server error — check API logs')] %}
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:9px 16px;border-bottom:1px solid var(--border);color:var(--danger);background:var(--surface-2);{% if loop.last %}border-bottom:none;{% endif %}">{{ code }}</div>
+        <div style="font-size:12px;padding:9px 16px;border-bottom:1px solid var(--border);color:var(--muted);{% if loop.last %}border-bottom:none;{% endif %}">{{ meaning }}</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="docs-section" id="pagination" style="margin-bottom:40px;">
+      <div class="docs-section-title">Pagination</div>
+      <div class="docs-section-desc">List endpoints accept <span class="mono fs-12" style="color:var(--accent);">page</span> (default 1) and <span class="mono fs-12" style="color:var(--accent);">page_size</span> (default 20, max 100) query params and return:</div>
+      <div class="response-block">{ <span class="rk">"total"</span>: <span class="rv">integer</span>,  <span class="rc">// total matching records</span>
+  <span class="rk">"page"</span>: <span class="rv">integer</span>,
+  <span class="rk">"page_size"</span>: <span class="rv">integer</span>,
+  <span class="rk">"pages"</span>: <span class="rv">integer</span>,  <span class="rc">// ceil(total / page_size)</span>
+  <span class="rk">"..."</span>: []       <span class="rc">// resource key varies by endpoint</span>
+}</div>
+    </div>
+
+    <!-- ──────────────────────── DOCUMENTS ──────────────────────────── -->
+    <div class="docs-section" id="documents">
+      <div class="docs-section-title">
+        Documents
+        <span class="base-url-chip">/v1/documents</span>
+      </div>
+      <div class="docs-section-desc">Submit PDFs, query pipeline status, retrieve extracted fields, and apply human corrections.</div>
+
+      <!-- GET /v1/documents/ -->
+      {% call endpoint_block("GET", "/v1/documents/", "Search & list documents") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">status</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter by pipeline status (e.g. <code>COMPLETED</code>, <code>NEEDS_REVIEW</code>, <code>FAILED</code>)</td></tr>
+        <tr><td class="param-name">document_class</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter by document class ID</td></tr>
+        <tr><td class="param-name">shipment_id</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter documents linked to a shipment</td></tr>
+        <tr><td class="param-name">field_name</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter by extracted field name</td></tr>
+        <tr><td class="param-name">field_value</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter by field value — append <code>*</code> for prefix wildcard</td></tr>
+        <tr><td class="param-name">date_from / date_to</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">ISO 8601 date range on <code>created_at</code></td></tr>
+        <tr><td class="param-name">page / page_size</td><td class="param-type">integer</td><td><span class="param-opt">optional</span></td><td class="param-desc">Pagination — default 1 / 20, max page_size 100</td></tr>
+      </table>
+      <div class="subsection-title">Response</div>
+      <div class="response-block">{ <span class="rk">"total"</span>: <span class="rv">integer</span>,
+  <span class="rk">"page"</span>: <span class="rv">integer</span>,
+  <span class="rk">"page_size"</span>: <span class="rv">integer</span>,
+  <span class="rk">"pages"</span>: <span class="rv">integer</span>,
+  <span class="rk">"documents"</span>: [<span class="rv">DocumentOut</span>]
+}</div>
+      {% endcall %}
+
+      <!-- POST /v1/documents/submit -->
+      {% call endpoint_block("POST", "/v1/documents/submit", "Submit a PDF for processing") %}
+      <div class="subsection-title">Body — multipart/form-data</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">file</td><td class="param-type">file</td><td><span class="param-req">required</span></td><td class="param-desc">PDF file, max 50 MB</td></tr>
+        <tr><td class="param-name">document_class</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Override AI classification with a known class ID</td></tr>
+        <tr><td class="param-name">variant_key</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Force a specific variant instead of auto-discovery</td></tr>
+        <tr><td class="param-name">priority</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"><code>standard</code> (default) or <code>express</code></td></tr>
+        <tr><td class="param-name">webhook_url</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Per-document callback — overrides global webhook subscriptions</td></tr>
+        <tr><td class="param-name">metadata</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">JSON string of arbitrary key-value pairs stored on the document</td></tr>
+        <tr><td class="param-name">skip_stages</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Comma-separated stage names to skip: <code>MATCHING</code>, <code>POSTING</code></td></tr>
+      </table>
+      <div class="subsection-title">Response — 200 DocumentOut</div>
+      <div class="response-block">{ <span class="rk">"id"</span>: <span class="rv">"uuid"</span>,
+  <span class="rk">"status"</span>: <span class="rv">"RECEIVED"</span>,
+  <span class="rk">"file_name"</span>: <span class="rv">string</span>,
+  <span class="rk">"document_class"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"priority"</span>: <span class="rv">"standard" | "express"</span>,
+  <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>
+}</div>
+      <div class="note"><strong>409 Conflict</strong> — returned if the file's SHA-256 matches an existing document. The response body contains the existing document's ID.</div>
+      {% endcall %}
+
+      <!-- GET /v1/documents/{id} -->
+      {% call endpoint_block("GET", "/v1/documents/<span class=\"path-param\">{document_id}</span>", "Retrieve a document record") %}
+      <div class="subsection-title">Response — DocumentOut</div>
+      <div class="response-block">{ <span class="rk">"id"</span>: <span class="rv">string</span>,
+  <span class="rk">"status"</span>: <span class="rv">string</span>,
+  <span class="rk">"file_name"</span>: <span class="rv">string</span>,
+  <span class="rk">"sha256"</span>: <span class="rv">string</span>,
+  <span class="rk">"document_class"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"variant_key"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"priority"</span>: <span class="rv">string</span>,
+  <span class="rk">"metadata"</span>: <span class="rv">object | null</span>,
+  <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>,
+  <span class="rk">"updated_at"</span>: <span class="rv">ISO8601</span>
+}</div>
+      {% endcall %}
+
+      <!-- GET /v1/documents/{id}/status -->
+      {% call endpoint_block("GET", "/v1/documents/<span class=\"path-param\">{document_id}</span>/status", "Pipeline status & event log") %}
+      <div class="subsection-title">Response — DocumentStatusOut</div>
+      <div class="response-block">{ <span class="rk">"id"</span>: <span class="rv">string</span>,
+  <span class="rk">"status"</span>: <span class="rv">string</span>,
+  <span class="rk">"document_class"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"variant"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"pipeline"</span>: [{
+    <span class="rk">"stage"</span>: <span class="rv">string</span>,
+    <span class="rk">"status"</span>: <span class="rv">"ok" | "error" | "skip"</span>,
+    <span class="rk">"detail"</span>: <span class="rv">string</span>,
+    <span class="rk">"timestamp"</span>: <span class="rv">ISO8601</span>,
+    <span class="rk">"duration_ms"</span>: <span class="rv">integer | null</span>
+  }]
+}</div>
+      {% endcall %}
+
+      <!-- GET /v1/documents/{id}/fields -->
+      {% call endpoint_block("GET", "/v1/documents/<span class=\"path-param\">{document_id}</span>/fields", "Extracted fields & tables") %}
+      <div class="subsection-title">Response — DocumentFieldsOut</div>
+      <div class="response-block">{ <span class="rk">"document_id"</span>: <span class="rv">string</span>,
+  <span class="rk">"document_class"</span>: <span class="rv">string</span>,
+  <span class="rk">"variant_key"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"learning_stage"</span>: <span class="rv">"ZERO_SHOT" | "LEARNING" | "LEARNED" | "OPTIMISED"</span>,
+  <span class="rk">"field_count"</span>: <span class="rv">integer</span>,
+  <span class="rk">"avg_confidence"</span>: <span class="rv">float</span>,
+  <span class="rk">"fields"</span>: [<span class="rv">ExtractedFieldOut</span>],
+  <span class="rk">"tables"</span>: [<span class="rv">TableOut</span>],
+  <span class="rk">"pages_total"</span>: <span class="rv">integer</span>,
+  <span class="rk">"pages_sampled"</span>: <span class="rv">integer</span>
+}</div>
+      <div class="note"><strong>409</strong> — returned if extraction has not completed yet.</div>
+      {% endcall %}
+
+      <!-- PATCH /v1/documents/{id}/fields/{name}/correct -->
+      {% call endpoint_block("PATCH", "/v1/documents/<span class=\"path-param\">{document_id}</span>/fields/<span class=\"path-param\">{field_name}</span>/correct", "Apply human correction") %}
+      <div class="subsection-title">Body — application/json</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">corrected_value</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">The correct value for this field</td></tr>
+        <tr><td class="param-name">corrected_by</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">User identifier (email, name, or system ID)</td></tr>
+      </table>
+      <div class="subsection-title">Response — FieldCorrectionOut</div>
+      <div class="response-block">{ <span class="rk">"document_id"</span>: <span class="rv">string</span>,
+  <span class="rk">"field_name"</span>: <span class="rv">string</span>,
+  <span class="rk">"original_value"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"corrected_value"</span>: <span class="rv">string</span>,
+  <span class="rk">"corrected_by"</span>: <span class="rv">string</span>,
+  <span class="rk">"corrected_at"</span>: <span class="rv">ISO8601</span>,
+  <span class="rk">"variant_id"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"learning_stage_before"</span>: <span class="rv">string</span>,
+  <span class="rk">"learning_stage_after"</span>: <span class="rv">string</span>,
+  <span class="rk">"confirmed_instance_count"</span>: <span class="rv">integer</span>
+}</div>
+      <div class="note">Each correction increments the variant's confirmed instance count and may advance its <strong>learning stage</strong> (ZERO_SHOT → LEARNING → LEARNED → OPTIMISED).</div>
+      {% endcall %}
+
+    </div><!-- /documents -->
+
+    <!-- ──────────────────────── DOCUMENT CLASSES ───────────────────── -->
+    <div class="docs-section" id="document-classes">
+      <div class="docs-section-title">
+        Document Classes
+        <span class="base-url-chip">/v1/document_classes</span>
+      </div>
+      <div class="docs-section-desc">Named document types (e.g. RFQ, Purchase Order, Invoice). Each class has one or more Variants.</div>
+
+      {% call endpoint_block("GET", "/v1/document_classes/", "List all document classes") %}
+      <div class="subsection-title">Response — DocumentClassListOut</div>
+      <div class="response-block">{ <span class="rk">"total"</span>: <span class="rv">integer</span>,
+  <span class="rk">"classes"</span>: [{
+    <span class="rk">"id"</span>: <span class="rv">string</span>,
+    <span class="rk">"name"</span>: <span class="rv">string</span>,
+    <span class="rk">"slug"</span>: <span class="rv">string</span>,
+    <span class="rk">"treatment"</span>: <span class="rv">"PROCESS" | "STORE" | "STORE_AND_FORWARD" | "GENERATED"</span>,
+    <span class="rk">"active"</span>: <span class="rv">boolean</span>,
+    <span class="rk">"variant_count"</span>: <span class="rv">integer</span>,
+    <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>
+  }]
+}</div>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/document_classes/<span class=\"path-param\">{class_id}</span>", "Get class with variants") %}
+      <div class="subsection-title">Response — DocumentClassDetailOut</div>
+      <div class="response-block">{ <span class="rk">"id"</span>: <span class="rv">string</span>,
+  <span class="rk">"name"</span>: <span class="rv">string</span>,
+  <span class="rk">"slug"</span>: <span class="rv">string</span>,
+  <span class="rk">"treatment"</span>: <span class="rv">string</span>,
+  <span class="rk">"active"</span>: <span class="rv">boolean</span>,
+  <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>,
+  <span class="rk">"variants"</span>: [{
+    <span class="rk">"id"</span>: <span class="rv">string</span>,
+    <span class="rk">"variant_key"</span>: <span class="rv">string</span>,
+    <span class="rk">"learning_stage"</span>: <span class="rv">string</span>,
+    <span class="rk">"confirmed_instance_count"</span>: <span class="rv">integer</span>,
+    <span class="rk">"avg_confidence"</span>: <span class="rv">float</span>,
+    <span class="rk">"active"</span>: <span class="rv">boolean</span>
+  }]
+}</div>
+      {% endcall %}
+
+    </div><!-- /document-classes -->
+
+    <!-- ──────────────────────── VARIANTS ───────────────────────────── -->
+    <div class="docs-section" id="variants">
+      <div class="docs-section-title">
+        Variants
+        <span class="base-url-chip">/v1/variants</span>
+      </div>
+      <div class="docs-section-desc">A Variant is a specific layout or issuer format within a Document Class. The system learns extraction schemas at the Variant level.</div>
+
+      {% call endpoint_block("GET", "/v1/variants/", "List document variants") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">document_class_id</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter to a specific class</td></tr>
+        <tr><td class="param-name">learning_stage</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"><code>ZERO_SHOT</code> · <code>LEARNING</code> · <code>LEARNED</code> · <code>OPTIMISED</code></td></tr>
+        <tr><td class="param-name">active_only</td><td class="param-type">boolean</td><td><span class="param-opt">optional</span></td><td class="param-desc">Default <code>true</code></td></tr>
+      </table>
+      <div class="subsection-title">Response — VariantListOut</div>
+      <div class="response-block">{ <span class="rk">"total"</span>: <span class="rv">integer</span>,
+  <span class="rk">"variants"</span>: [{
+    <span class="rk">"id"</span>: <span class="rv">string</span>,
+    <span class="rk">"document_class_id"</span>: <span class="rv">string</span>,
+    <span class="rk">"variant_key"</span>: <span class="rv">string</span>,
+    <span class="rk">"learning_stage"</span>: <span class="rv">string</span>,
+    <span class="rk">"confirmed_instance_count"</span>: <span class="rv">integer</span>,
+    <span class="rk">"avg_confidence"</span>: <span class="rv">float</span>,
+    <span class="rk">"touchless_rate"</span>: <span class="rv">float</span>,
+    <span class="rk">"template_frozen"</span>: <span class="rv">boolean</span>,
+    <span class="rk">"active"</span>: <span class="rv">boolean</span>,
+    <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>,
+    <span class="rk">"updated_at"</span>: <span class="rv">ISO8601</span>
+  }]
+}</div>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/variants/<span class=\"path-param\">{variant_id}</span>", "Get a single variant") %}
+      <div class="docs-section-desc" style="margin-bottom:0;">Returns a single <code>VariantOut</code> — same shape as the list item above.</div>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/variants/<span class=\"path-param\">{variant_id}</span>/documents", "Documents under a variant") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">page / page_size</td><td class="param-type">integer</td><td><span class="param-opt">optional</span></td><td class="param-desc">Max page_size 100</td></tr>
+      </table>
+      <div class="subsection-title">Response — VariantDocumentsOut</div>
+      <div class="response-block">{ <span class="rk">"variant_id"</span>: <span class="rv">string</span>,
+  <span class="rk">"variant_key"</span>: <span class="rv">string</span>,
+  <span class="rk">"learning_stage"</span>: <span class="rv">string</span>,
+  <span class="rk">"total"</span>: <span class="rv">integer</span>,
+  <span class="rk">"documents"</span>: [{
+    <span class="rk">"id"</span>: <span class="rv">string</span>,
+    <span class="rk">"status"</span>: <span class="rv">string</span>,
+    <span class="rk">"file_name"</span>: <span class="rv">string</span>,
+    <span class="rk">"priority"</span>: <span class="rv">string</span>,
+    <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>
+  }]
+}</div>
+      {% endcall %}
+
+    </div><!-- /variants -->
+
+    <!-- ──────────────────────── REVIEW ─────────────────────────────── -->
+    <div class="docs-section" id="review">
+      <div class="docs-section-title">
+        Review
+        <span class="base-url-chip">/v1/review</span>
+      </div>
+      <div class="docs-section-desc">Human-in-the-loop queue for documents that failed automated checks (NIGO conditions, low confidence, agent instructions).</div>
+
+      {% call endpoint_block("GET", "/v1/review/", "List the review queue") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">document_class</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter by class ID</td></tr>
+        <tr><td class="param-name">page / page_size</td><td class="param-type">integer</td><td><span class="param-opt">optional</span></td><td class="param-desc"></td></tr>
+      </table>
+      <div class="subsection-title">Response — ReviewQueueOut</div>
+      <div class="response-block">{ <span class="rk">"total"</span>: <span class="rv">integer</span>,
+  <span class="rk">"items"</span>: [{
+    <span class="rk">"id"</span>: <span class="rv">string</span>,
+    <span class="rk">"file_name"</span>: <span class="rv">string</span>,
+    <span class="rk">"document_class_name"</span>: <span class="rv">string</span>,
+    <span class="rk">"variant_key"</span>: <span class="rv">string | null</span>,
+    <span class="rk">"shipment_id"</span>: <span class="rv">string | null</span>,
+    <span class="rk">"nigo_conditions"</span>: <span class="rv">[string]</span>,
+    <span class="rk">"field_count"</span>: <span class="rv">integer</span>,
+    <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>
+  }]
+}</div>
+      {% endcall %}
+
+      {% call endpoint_block("POST", "/v1/review/<span class=\"path-param\">{document_id}</span>/approve", "Approve & re-queue") %}
+      <div class="subsection-title">Body — application/json</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">target_stage</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc"><code>EXTRACTING</code> · <code>VALIDATING</code> · <code>MATCHING</code> · <code>POSTING</code> · <code>COMPLETED</code></td></tr>
+        <tr><td class="param-name">approved_by</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">User identifier</td></tr>
+        <tr><td class="param-name">note</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Optional reviewer note</td></tr>
+      </table>
+      <div class="note">Re-runs the pipeline from <code>target_stage</code> asynchronously (except <code>COMPLETED</code> which skips remaining stages).</div>
+      {% endcall %}
+
+      {% call endpoint_block("POST", "/v1/review/<span class=\"path-param\">{document_id}</span>/reject", "Reject a document") %}
+      <div class="subsection-title">Body — application/json</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">rejected_by</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">User identifier</td></tr>
+        <tr><td class="param-name">reason</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">Reason for rejection</td></tr>
+      </table>
+      <div class="note">Sets document status to <strong>FAILED</strong>.</div>
+      {% endcall %}
+
+      {% call endpoint_block("POST", "/v1/documents/<span class=\"path-param\">{document_id}</span>/retry", "Retry a failed document") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">retried_by</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Default: <code>"system"</code></td></tr>
+      </table>
+      <div class="note">Only works when status is <strong>FAILED</strong>. Returns <strong>409</strong> otherwise. Resets to RECEIVED and re-runs the full pipeline.</div>
+      {% endcall %}
+
+    </div><!-- /review -->
+
+    <!-- ──────────────────────── INSTRUCTIONS ───────────────────────── -->
+    <div class="docs-section" id="instructions">
+      <div class="docs-section-title">
+        Agent Instructions
+        <span class="base-url-chip">/v1/instructions</span>
+      </div>
+      <div class="docs-section-desc">Conditional rules evaluated by the Governance Agent. When a condition matches, an action fires (e.g. require approval, skip posting, send email).</div>
+
+      {% call endpoint_block("POST", "/v1/instructions/", "Create an instruction") %}
+      <div class="subsection-title">Body — application/json</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">action</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc"><code>REQUIRE_APPROVAL</code> · <code>SKIP_POSTING</code> · <code>SKIP_MATCHING</code> · <code>FLAG_WARNING</code> · <code>NOTIFY_EMAIL</code></td></tr>
+        <tr><td class="param-name">document_class_id</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Scope rule to a specific class (null = all classes)</td></tr>
+        <tr><td class="param-name">condition_field</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Extracted field name to evaluate</td></tr>
+        <tr><td class="param-name">condition_operator</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"><code>eq</code> · <code>neq</code> · <code>gt</code> · <code>lt</code> · <code>contains</code> · <code>not_contains</code> · <code>starts_with</code> · <code>is_empty</code> · <code>is_not_empty</code></td></tr>
+        <tr><td class="param-name">condition_value</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Value to compare against</td></tr>
+        <tr><td class="param-name">action_value</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">e.g. email address for NOTIFY_EMAIL action</td></tr>
+        <tr><td class="param-name">priority</td><td class="param-type">integer</td><td><span class="param-opt">optional</span></td><td class="param-desc">Evaluation order — lower fires first. Default 100</td></tr>
+        <tr><td class="param-name">description</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Human-readable label</td></tr>
+        <tr><td class="param-name">created_by</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">User identifier</td></tr>
+      </table>
+      <div class="note">Returns <strong>201 Created</strong> with the new <code>InstructionOut</code>.</div>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/instructions/", "List instructions") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">document_class_id</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter by class</td></tr>
+        <tr><td class="param-name">active_only</td><td class="param-type">boolean</td><td><span class="param-opt">optional</span></td><td class="param-desc">Default <code>true</code></td></tr>
+      </table>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/instructions/<span class=\"path-param\">{instruction_id}</span>", "Get a single instruction") %}
+      <div class="docs-section-desc" style="margin-bottom:0;">Returns a single <code>InstructionOut</code>.</div>
+      {% endcall %}
+
+      {% call endpoint_block("PATCH", "/v1/instructions/<span class=\"path-param\">{instruction_id}</span>", "Update an instruction") %}
+      <div class="subsection-title">Body — application/json (all optional)</div>
+      <div class="response-block">{ <span class="rk">"active"</span>: <span class="rv">boolean</span>,
+  <span class="rk">"condition_field"</span>: <span class="rv">string</span>,
+  <span class="rk">"condition_operator"</span>: <span class="rv">string</span>,
+  <span class="rk">"condition_value"</span>: <span class="rv">string</span>,
+  <span class="rk">"action"</span>: <span class="rv">string</span>,
+  <span class="rk">"action_value"</span>: <span class="rv">string</span>,
+  <span class="rk">"description"</span>: <span class="rv">string</span>,
+  <span class="rk">"priority"</span>: <span class="rv">integer</span>
+}</div>
+      {% endcall %}
+
+      {% call endpoint_block("DELETE", "/v1/instructions/<span class=\"path-param\">{instruction_id}</span>", "Delete an instruction") %}
+      <div class="note">Returns <strong>204 No Content</strong>.</div>
+      {% endcall %}
+
+      {% call endpoint_block("POST", "/v1/instructions/<span class=\"path-param\">{instruction_id}</span>/test", "Dry-run against a document") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">document_id</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">Document to evaluate the instruction against</td></tr>
+      </table>
+      <div class="subsection-title">Response — InstructionTestOut</div>
+      <div class="response-block">{ <span class="rk">"document_id"</span>: <span class="rv">string</span>,
+  <span class="rk">"instruction_id"</span>: <span class="rv">string</span>,
+  <span class="rk">"condition_met"</span>: <span class="rv">boolean</span>,
+  <span class="rk">"condition_summary"</span>: <span class="rv">string</span>,
+  <span class="rk">"action_that_would_fire"</span>: <span class="rv">string | null</span>
+}</div>
+      {% endcall %}
+
+    </div><!-- /instructions -->
+
+    <!-- ──────────────────────── SHIPMENTS ──────────────────────────── -->
+    <div class="docs-section" id="shipments">
+      <div class="docs-section-title">
+        Shipments
+        <span class="base-url-chip">/v1/shipments</span>
+      </div>
+      <div class="docs-section-desc">Three-way match records linking Purchase Orders, Goods Receipt Notes, and Invoices. Created automatically during the MATCHING pipeline stage.</div>
+
+      {% call endpoint_block("GET", "/v1/shipments/", "List shipments") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">status</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"><code>OPEN</code> · <code>MATCHED</code> · <code>POSTED</code> · <code>FILED</code> · <code>COMPLETE</code></td></tr>
+        <tr><td class="param-name">match_result</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"><code>PASS</code> · <code>PASS_PARTIAL</code> · <code>FAIL</code></td></tr>
+        <tr><td class="param-name">reference_key</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Partial match on PO / shipment reference</td></tr>
+        <tr><td class="param-name">date_from / date_to</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">ISO 8601</td></tr>
+        <tr><td class="param-name">page / page_size</td><td class="param-type">integer</td><td><span class="param-opt">optional</span></td><td class="param-desc"></td></tr>
+      </table>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/shipments/<span class=\"path-param\">{shipment_id}</span>", "Get shipment with match breakdown") %}
+      <div class="subsection-title">Response — ShipmentDetailOut</div>
+      <div class="response-block">{ <span class="rk">"id"</span>: <span class="rv">string</span>,
+  <span class="rk">"status"</span>: <span class="rv">string</span>,
+  <span class="rk">"reference_key"</span>: <span class="rv">string</span>,
+  <span class="rk">"match_result"</span>: <span class="rv">"PASS" | "PASS_PARTIAL" | "FAIL" | null</span>,
+  <span class="rk">"match_summary"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"match_checks"</span>: [{
+    <span class="rk">"name"</span>: <span class="rv">string</span>,
+    <span class="rk">"status"</span>: <span class="rv">"PASS" | "FAIL" | "SKIP"</span>,
+    <span class="rk">"detail"</span>: <span class="rv">string</span>
+  }],
+  <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>
+}</div>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/shipments/<span class=\"path-param\">{shipment_id}</span>/documents", "Documents in a shipment") %}
+      <div class="subsection-title">Response — ShipmentDocumentsOut</div>
+      <div class="response-block">{ <span class="rk">"shipment_id"</span>: <span class="rv">string</span>,
+  <span class="rk">"reference_key"</span>: <span class="rv">string</span>,
+  <span class="rk">"total"</span>: <span class="rv">integer</span>,
+  <span class="rk">"documents"</span>: [{
+    <span class="rk">"id"</span>: <span class="rv">string</span>,
+    <span class="rk">"file_name"</span>: <span class="rv">string</span>,
+    <span class="rk">"status"</span>: <span class="rv">string</span>,
+    <span class="rk">"document_class_name"</span>: <span class="rv">string</span>,
+    <span class="rk">"field_count"</span>: <span class="rv">integer</span>,
+    <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>
+  }]
+}</div>
+      {% endcall %}
+
+    </div><!-- /shipments -->
+
+    <!-- ──────────────────────── WEBHOOKS ───────────────────────────── -->
+    <div class="docs-section" id="webhooks">
+      <div class="docs-section-title">
+        Webhooks
+        <span class="base-url-chip">/v1/webhooks</span>
+      </div>
+      <div class="docs-section-desc">Register HTTPS endpoints to receive real-time pipeline events. The payload is signed with HMAC-SHA256 if a <code>secret_key</code> is provided.</div>
+
+      {% call endpoint_block("POST", "/v1/webhooks/", "Register a webhook") %}
+      <div class="subsection-title">Body — application/json</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">url</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">https:// destination URL</td></tr>
+        <tr><td class="param-name">events</td><td class="param-type">array</td><td><span class="param-req">required</span></td><td class="param-desc">Empty array = subscribe to all events. Supported: <code>document.completed</code> · <code>document.needs_review</code> · <code>document.failed</code> · <code>match.fail</code> · <code>match.pass</code> · <code>shipment.complete</code></td></tr>
+        <tr><td class="param-name">secret_key</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Used to compute <code>X-Dokr-Signature</code> HMAC header</td></tr>
+        <tr><td class="param-name">description</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"></td></tr>
+        <tr><td class="param-name">created_by</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"></td></tr>
+      </table>
+      <div class="note">Returns <strong>201 Created</strong>.</div>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/webhooks/", "List subscriptions") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">active_only</td><td class="param-type">boolean</td><td><span class="param-opt">optional</span></td><td class="param-desc">Default <code>false</code></td></tr>
+        <tr><td class="param-name">event</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter by event name</td></tr>
+      </table>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/webhooks/<span class=\"path-param\">{subscription_id}</span>", "Get a subscription") %}
+      <div class="subsection-title">Response — WebhookOut</div>
+      <div class="response-block">{ <span class="rk">"id"</span>: <span class="rv">string</span>,
+  <span class="rk">"url"</span>: <span class="rv">string</span>,
+  <span class="rk">"events"</span>: <span class="rv">[string]</span>,
+  <span class="rk">"active"</span>: <span class="rv">boolean</span>,
+  <span class="rk">"last_delivery_at"</span>: <span class="rv">ISO8601 | null</span>,
+  <span class="rk">"last_delivery_status"</span>: <span class="rv">"ok" | "error" | null</span>,
+  <span class="rk">"total_deliveries"</span>: <span class="rv">integer</span>,
+  <span class="rk">"total_failures"</span>: <span class="rv">integer</span>,
+  <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>
+}</div>
+      {% endcall %}
+
+      {% call endpoint_block("PATCH", "/v1/webhooks/<span class=\"path-param\">{subscription_id}</span>", "Update a subscription") %}
+      <div class="subsection-title">Body — application/json (all optional)</div>
+      <div class="response-block">{ <span class="rk">"url"</span>: <span class="rv">string</span>, <span class="rk">"events"</span>: <span class="rv">[string]</span>,
+  <span class="rk">"secret_key"</span>: <span class="rv">string</span>, <span class="rk">"active"</span>: <span class="rv">boolean</span>,
+  <span class="rk">"description"</span>: <span class="rv">string</span>
+}</div>
+      {% endcall %}
+
+      {% call endpoint_block("DELETE", "/v1/webhooks/<span class=\"path-param\">{subscription_id}</span>", "Delete a subscription") %}
+      <div class="note">Returns <strong>204 No Content</strong>.</div>
+      {% endcall %}
+
+      {% call endpoint_block("POST", "/v1/webhooks/<span class=\"path-param\">{subscription_id}</span>/test", "Send a test ping") %}
+      <div class="subsection-title">Response — WebhookTestOut</div>
+      <div class="response-block">{ <span class="rk">"subscription_id"</span>: <span class="rv">string</span>,
+  <span class="rk">"url"</span>: <span class="rv">string</span>,
+  <span class="rk">"success"</span>: <span class="rv">boolean</span>,
+  <span class="rk">"status_code"</span>: <span class="rv">integer | null</span>,
+  <span class="rk">"detail"</span>: <span class="rv">string</span>
+}</div>
+      <div class="note">Fires a <code>webhook.test</code> event. Does not count towards delivery stats.</div>
+      {% endcall %}
+
+    </div><!-- /webhooks -->
+
+    <!-- ──────────────────────── DISCOVERY ──────────────────────────── -->
+    <div class="docs-section" id="discovery">
+      <div class="docs-section-title">
+        Discovery
+        <span class="base-url-chip">/v1/documents</span>
+      </div>
+      <div class="docs-section-desc">Documents the AI could not confidently classify land in the discovery queue with status <code>CANDIDATE_NEW_CLASS</code>. Operators can promote them to new document classes or dismiss them.</div>
+
+      {% call endpoint_block("GET", "/v1/documents/discovery/", "List the discovery queue") %}
+      <div class="subsection-title">Response — DiscoveryQueueOut</div>
+      <div class="response-block">{ <span class="rk">"total"</span>: <span class="rv">integer</span>,
+  <span class="rk">"items"</span>: [{
+    <span class="rk">"id"</span>: <span class="rv">string</span>,
+    <span class="rk">"file_name"</span>: <span class="rv">string</span>,
+    <span class="rk">"classification_confidence"</span>: <span class="rv">float</span>,
+    <span class="rk">"suggested_class_name"</span>: <span class="rv">string | null</span>,
+    <span class="rk">"candidate_reason"</span>: <span class="rv">string</span>,
+    <span class="rk">"ai_governance_result"</span>: <span class="rv">string | null</span>,
+    <span class="rk">"created_at"</span>: <span class="rv">ISO8601</span>
+  }]
+}</div>
+      {% endcall %}
+
+      {% call endpoint_block("POST", "/v1/documents/<span class=\"path-param\">{document_id}</span>/promote-class", "Promote to a document class") %}
+      <div class="subsection-title">Body — application/json</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">confirmed_class_name</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">Name for the document class</td></tr>
+        <tr><td class="param-name">promoted_by</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc">User identifier</td></tr>
+        <tr><td class="param-name">confirmed_class_id</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Assign to an existing class. Omit to auto-create a new one.</td></tr>
+        <tr><td class="param-name">confirmed_class_description</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"></td></tr>
+        <tr><td class="param-name">note</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc"></td></tr>
+      </table>
+      <div class="note">Creates a new <code>DocumentClass</code> if no <code>confirmed_class_id</code> is supplied, then re-queues the document to <strong>EXTRACTING</strong>.</div>
+      {% endcall %}
+
+      {% call endpoint_block("POST", "/v1/documents/<span class=\"path-param\">{document_id}</span>/dismiss-discovery", "Dismiss a candidate") %}
+      <div class="subsection-title">Body — application/json</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">dismissed_by</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc"></td></tr>
+        <tr><td class="param-name">reason</td><td class="param-type">string</td><td><span class="param-req">required</span></td><td class="param-desc"></td></tr>
+        <tr><td class="param-name">nearest_class_id</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Closest existing class (for audit trail)</td></tr>
+      </table>
+      <div class="note">Sets document status to <strong>NEEDS_REVIEW</strong>.</div>
+      {% endcall %}
+
+    </div><!-- /discovery -->
+
+    <!-- ──────────────────────── AGENTS ─────────────────────────────── -->
+    <div class="docs-section" id="agents">
+      <div class="docs-section-title">
+        Agents
+        <span class="base-url-chip">/v1/agents</span>
+      </div>
+      <div class="docs-section-desc">Audit agents run on-demand data quality and pipeline health checks asynchronously. Poll <code>/runs/{run_id}</code> for results.</div>
+
+      {% call endpoint_block("GET", "/v1/agents/", "List available agents") %}
+      <div class="subsection-title">Response</div>
+      <div class="response-block">[{
+  <span class="rk">"name"</span>: <span class="rv">string</span>,
+  <span class="rk">"label"</span>: <span class="rv">string</span>,
+  <span class="rk">"description"</span>: <span class="rv">string</span>,
+  <span class="rk">"category"</span>: <span class="rv">string</span>,
+  <span class="rk">"typical_duration"</span>: <span class="rv">string</span>,
+  <span class="rk">"params"</span>: <span class="rv">[{name, type, required, description}]</span>,
+  <span class="rk">"last_run"</span>: <span class="rv">AgentRunOut | null</span>
+}]</div>
+      {% endcall %}
+
+      {% call endpoint_block("POST", "/v1/agents/<span class=\"path-param\">{agent_name}</span>/run", "Trigger an agent run") %}
+      <div class="subsection-title">Body — application/json (optional)</div>
+      <div class="response-block">{ <span class="rk">"params"</span>: { <span class="rv">...agent-specific key/value pairs</span> } }</div>
+      <div class="subsection-title">Response — TriggerOut</div>
+      <div class="response-block">{ <span class="rk">"run_id"</span>: <span class="rv">string</span>,
+  <span class="rk">"agent_name"</span>: <span class="rv">string</span>,
+  <span class="rk">"status"</span>: <span class="rv">"pending"</span>,
+  <span class="rk">"message"</span>: <span class="rv">string</span>
+}</div>
+      <div class="note">Returns <strong>404</strong> if <code>agent_name</code> is not in the agent catalog. Poll <code>/v1/agents/runs/{run_id}</code> to retrieve results.</div>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/agents/runs", "List agent run history") %}
+      <div class="subsection-title">Query parameters</div>
+      <table class="param-table">
+        <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        <tr><td class="param-name">agent_name</td><td class="param-type">string</td><td><span class="param-opt">optional</span></td><td class="param-desc">Filter by agent</td></tr>
+        <tr><td class="param-name">limit / offset</td><td class="param-type">integer</td><td><span class="param-opt">optional</span></td><td class="param-desc">Default limit 20, max 100</td></tr>
+      </table>
+      {% endcall %}
+
+      {% call endpoint_block("GET", "/v1/agents/runs/<span class=\"path-param\">{run_id}</span>", "Get a specific agent run") %}
+      <div class="subsection-title">Response — AgentRunOut</div>
+      <div class="response-block">{ <span class="rk">"id"</span>: <span class="rv">string</span>,
+  <span class="rk">"agent_name"</span>: <span class="rv">string</span>,
+  <span class="rk">"status"</span>: <span class="rv">"pending" | "running" | "completed" | "failed"</span>,
+  <span class="rk">"summary"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"error"</span>: <span class="rv">string | null</span>,
+  <span class="rk">"params"</span>: <span class="rv">object | null</span>,
+  <span class="rk">"result"</span>: <span class="rv">object | null</span>,
+  <span class="rk">"started_at"</span>: <span class="rv">ISO8601 | null</span>,
+  <span class="rk">"finished_at"</span>: <span class="rv">ISO8601 | null</span>,
+  <span class="rk">"duration_ms"</span>: <span class="rv">integer | null</span>
+}</div>
+      {% endcall %}
+
+    </div><!-- /agents -->
+
+  </main>
+</div>
+
+<!-- ── Intersection-observer sidebar highlight ────────────────────── -->
+<script>
+(function () {
+  const links = document.querySelectorAll('.sidebar-link');
+  const sections = document.querySelectorAll('.docs-section, #intro, #auth, #errors, #pagination');
+
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector('.sidebar-link[href="#' + e.target.id + '"]');
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => obs.observe(s));
+
+  // Smooth-scroll sidebar clicks
+  links.forEach(l => {
+    l.addEventListener('click', function (e) {
+      const id = this.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth' }); }
+    });
+  });
+
+  // Endpoint expand / collapse
+  document.querySelectorAll('.endpoint-header').forEach(h => {
+    h.addEventListener('click', () => {
+      h.closest('.endpoint').classList.toggle('open');
+    });
+  });
+})();
+</script>
+{% endblock %}
+
+{# ── Macro — endpoint card ────────────────────────────────────────── #}
+{% macro endpoint_block(method, path, summary) %}
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="method method-{{ method | lower }}">{{ method }}</span>
+    <span class="endpoint-path">{{ path | safe }}</span>
+    <span class="endpoint-summary">{{ summary }}</span>
+    <span class="endpoint-chevron">▼</span>
+  </div>
+  <div class="endpoint-body">
+    {{ caller() }}
+  </div>
+</div>
+{% endmacro %}

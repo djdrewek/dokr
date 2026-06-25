@@ -1,0 +1,94 @@
+{% for d in rows %}
+<div class="expandable" id="disc-{{ d.id }}">
+
+  <!-- Summary row -->
+  <div class="table-row expand-trigger" style="cursor:pointer;padding:14px 16px;">
+    <span class="expand-icon text-muted" style="flex:none;width:20px;font-size:10px;user-select:none;">▼</span>
+    <span class="truncate" style="flex:2;font-size:12px;color:var(--text);" title="{{ d.file_name }}">{{ d.file_name }}</span>
+    <span style="flex:1.8;">
+      <span class="badge" style="color:var(--purple);background:#161B3A;max-width:240px;overflow:hidden;text-overflow:ellipsis;display:inline-block;">
+        {{ d.suggested_name[:40] }}{% if d.suggested_name|length > 40 %}…{% endif %}
+      </span>
+    </span>
+    <span class="mono text-muted" style="flex:0.6;font-size:11px;">{{ d.confidence }}</span>
+    <span class="mono text-dim" style="flex:0.7;font-size:11px;">{{ d.created_at }}</span>
+  </div>
+
+  <!-- Expanded detail -->
+  <div class="expand-content">
+    <div class="grid-2" style="gap:20px;">
+
+      <!-- Left: AI analysis -->
+      <div>
+        <div class="panel-title">AI analysis</div>
+        {% if d.gov_reasoning %}
+        <div class="fs-12 text-muted mb-16">{{ d.gov_reasoning }}</div>
+        {% endif %}
+
+        {% if d.candidate_reason %}
+        <div class="fs-12 text-dim mb-16" style="border-left:2px solid var(--border-2);padding-left:10px;">
+          {{ d.candidate_reason }}
+        </div>
+        {% endif %}
+
+        {% if d.gov_keywords %}
+        <div class="panel-title" style="margin-top:12px;">Suggested keywords</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+          {% for kw in d.gov_keywords %}
+          <span class="chip">{{ kw }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Right: actions -->
+      <div>
+        <div class="panel-title">Promote to new class</div>
+        <form hx-post="/dashboard/discovery/{{ d.id }}/promote"
+              hx-target="#toast-container"
+              hx-swap="beforeend"
+              hx-on::after-request="htmx.find('#disc-{{ d.id }}').remove()"
+              style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+          <div class="field-group">
+            <label class="field-label">Class name</label>
+            <input type="text" name="class_name" value="{{ d.suggested_name }}" class="field-input" required>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Promoted by</label>
+            <input type="text" name="promoted_by" value="ops@dokr.local" class="field-input">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-start;">
+            ✓ Create class &amp; re-extract
+          </button>
+        </form>
+
+        <div class="divider" style="margin:12px 0;"></div>
+
+        <div class="panel-title">Dismiss</div>
+        <form hx-post="/dashboard/discovery/{{ d.id }}/dismiss"
+              hx-target="#toast-container"
+              hx-swap="beforeend"
+              hx-on::after-request="htmx.find('#disc-{{ d.id }}').remove()"
+              style="display:flex;flex-direction:column;gap:10px;">
+          <div class="field-group">
+            <label class="field-label">Reason</label>
+            <input type="text" name="reason" placeholder="e.g. One-off manual, not recurring…" class="field-input" required>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Dismissed by</label>
+            <input type="text" name="dismissed_by" value="ops@dokr.local" class="field-input">
+          </div>
+          <button type="submit" class="btn btn-warn btn-sm" style="align-self:flex-start;">
+            → Move to Review
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% else %}
+<div style="padding:60px;text-align:center;">
+  <div class="mono fs-12 text-dim">Discovery queue empty</div>
+</div>
+{% endfor %}

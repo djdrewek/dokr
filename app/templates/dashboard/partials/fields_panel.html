@@ -1,0 +1,371 @@
+{#
+  Partial: fields_panel.html
+  Returned by POST /docs/{id}/re-extract and swapped into #fields-panel.
+  Contains identical markup to the fields section in doc_detail.html.
+#}
+
+{% if doc.fields %}
+
+{# ── ZERO_SHOT DISCOVERY MODE ─────────────────────────── #}
+{% if doc.is_discovery_mode %}
+<div style="padding:12px 16px;background:rgba(124,132,232,0.08);
+            border-bottom:2px solid #7C84E8;">
+  <div style="font-size:12px;font-weight:600;color:#7C84E8;margin-bottom:4px;">
+    🔍 AI Field Discovery — {{ (doc.fields|length) + (tables|length) }} fields found
+    ({{ doc.fields | selectattr("method", "ne", "AI_DISCOVERY_ADDITIONAL") | list | length }} core +
+     {{ doc.fields | selectattr("method", "equalto", "AI_DISCOVERY_ADDITIONAL") | list | length }} additional
+     {% if tables %}+ {{ tables|length }} table{% if tables|length != 1 %}s{% endif %}{% endif %})
+  </div>
+  <div class="fs-11 text-dim" style="line-height:1.5;">
+    AI scanned this document and found the fields below.
+    Tick the ones you want to extract for <strong>all {{ doc.class_name }}</strong> documents.
+    Click a field name to rename it. Then click <strong>Confirm schema</strong>.
+  </div>
+</div>
+
+<form id="discovery-form"
+      hx-post="/dashboard/docs/{{ doc.id }}/confirm-fields"
+      hx-target="#toast-container"
+      hx-swap="beforeend">
+
+  <div style="display:flex;gap:8px;align-items:center;padding:8px 16px;
+              border-bottom:1px solid var(--border);background:var(--surface-1);">
+    <button type="button" class="btn btn-secondary btn-sm"
+            onclick="document.querySelectorAll('#discovery-form input[type=checkbox]').forEach(c=>c.checked=true)">
+      All
+    </button>
+    <button type="button" class="btn btn-secondary btn-sm"
+            onclick="document.querySelectorAll('#discovery-form input[type=checkbox]').forEach(c=>c.checked=false)">
+      None
+    </button>
+    <span class="fs-11 text-dim" style="flex:1;">Edit field name to rename</span>
+    <button type="submit" class="btn btn-primary btn-sm">✓ Confirm schema</button>
+  </div>
+
+  {# ── CORE fields (AI_DISCOVERY) — pre-checked ── #}
+  {% set core_fields = doc.fields | selectattr("method", "ne", "AI_DISCOVERY_ADDITIONAL") | list %}
+  {% set additional_fields = doc.fields | selectattr("method", "equalto", "AI_DISCOVERY_ADDITIONAL") | list %}
+
+  <div style="padding:4px 14px 2px;font-size:10px;font-weight:600;letter-spacing:.05em;
+              color:#7C84E8;text-transform:uppercase;background:var(--surface-1);
+              border-bottom:1px solid var(--border);">
+    ✓ Recommended ({{ core_fields | length }}) — pre-selected for ERP
+  </div>
+
+  {% for f in core_fields %}
+  <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;
+              border-bottom:1px solid var(--border);
+              background:{% if loop.index is odd %}var(--surface-1){% else %}var(--bg){% endif %};">
+    <input type="checkbox" name="confirmed_fields" value="{{ f.name }}"
+           checked style="flex:none;width:14px;height:14px;cursor:pointer;">
+    <input type="text" name="rename_{{ f.name }}" value="{{ f.name }}"
+           style="flex:none;width:150px;font-size:11px;
+                  font-family:'JetBrains Mono',monospace;
+                  padding:2px 5px;border-radius:3px;
+                  background:transparent;color:var(--text);
+                  border:1px dashed transparent;"
+           onfocus="this.style.borderColor='var(--accent)'"
+           onblur="this.style.borderColor='transparent'">
+    <span style="flex:1;font-size:12px;color:var(--text-muted);
+                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          title="{{ f.value }}">{{ f.value }}</span>
+    <span class="field-conf" style="flex:none;">{{ f.confidence }}</span>
+  </div>
+  {% endfor %}
+
+  {# ── ADDITIONAL fields — collapsed, unchecked ── #}
+  {% if additional_fields %}
+  <details style="border-top:2px dashed rgba(124,132,232,0.3);">
+    <summary style="display:flex;align-items:center;gap:8px;padding:8px 14px;
+                    cursor:pointer;font-size:11px;font-weight:600;
+                    color:var(--text-muted);background:var(--surface-1);
+                    list-style:none;user-select:none;">
+      <span style="font-size:10px;color:#7C84E8;">▶</span>
+      Additional fields ({{ additional_fields | length }}) — expand to include
+      <span style="margin-left:auto;font-weight:400;font-size:10px;opacity:.7;">
+        none selected by default
+      </span>
+    </summary>
+    <style>
+      details[open] > summary span:first-child { content: '▼'; transform: none; }
+      details[open] > summary span:first-child::before { content: '▼'; }
+      details[open] > summary span:first-child { font-size:10px;color:#7C84E8; }
+    </style>
+
+    {% for f in additional_fields %}
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;
+                border-bottom:1px solid var(--border);
+                opacity:.85;
+                background:{% if loop.index is odd %}var(--surface-1){% else %}var(--bg){% endif %};">
+      <input type="checkbox" name="confirmed_fields" value="{{ f.name }}"
+             style="flex:none;width:14px;height:14px;cursor:pointer;">
+      <input type="text" name="rename_{{ f.name }}" value="{{ f.name }}"
+             style="flex:none;width:150px;font-size:11px;
+                    font-family:'JetBrains Mono',monospace;
+                    padding:2px 5px;border-radius:3px;
+                    background:transparent;color:var(--text);
+                    border:1px dashed transparent;"
+             onfocus="this.style.borderColor='var(--accent)'"
+             onblur="this.style.borderColor='transparent'">
+      <span style="flex:1;font-size:12px;color:var(--text-muted);
+                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="{{ f.value }}">{{ f.value }}</span>
+      <span class="field-conf" style="flex:none;">{{ f.confidence }}</span>
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
+
+  {# ── TABLE FIELDS (discovery mode) — checked by default ── #}
+  {% if has_tables %}
+  <div style="border-top:2px dashed rgba(76,175,80,0.35);">
+    <div style="padding:5px 14px 3px;font-size:10px;font-weight:600;letter-spacing:.05em;
+                color:#4CAF50;text-transform:uppercase;background:var(--surface-1);
+                border-bottom:1px solid var(--border);">
+      📋 Table fields ({{ tables|length }}) — pre-selected
+    </div>
+    {% for t in tables %}
+    <div style="border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;
+                  background:{% if loop.index is odd %}var(--surface-1){% else %}var(--bg){% endif %};">
+        <input type="checkbox" name="confirmed_fields" value="{{ t.name }}"
+               checked style="flex:none;width:14px;height:14px;cursor:pointer;">
+        <input type="text" name="rename_{{ t.name }}" value="{{ t.name }}"
+               style="flex:none;width:150px;font-size:11px;
+                      font-family:'JetBrains Mono',monospace;
+                      padding:2px 5px;border-radius:3px;
+                      background:transparent;color:var(--text);
+                      border:1px dashed transparent;"
+               onfocus="this.style.borderColor='var(--accent)'"
+               onblur="this.style.borderColor='transparent'">
+        <span style="font-size:10px;font-weight:700;color:#4CAF50;letter-spacing:.04em;">TABLE</span>
+        <span style="font-size:11px;color:var(--text-muted);">{{ t.row_count }} rows</span>
+        {% if t.columns %}
+        <span style="font-size:10px;color:var(--text-muted);flex:1;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ t.columns | join(", ") }}
+        </span>
+        {% endif %}
+      </div>
+      {% if t.rows %}
+      <details style="margin:0 14px 6px 22px;">
+        <summary style="font-size:10px;color:var(--text-muted);cursor:pointer;
+                        user-select:none;padding:2px 0;">
+          ▶ Preview rows
+        </summary>
+        <div style="overflow-x:auto;margin-top:4px;">
+          <table style="font-size:10px;border-collapse:collapse;width:100%;">
+            <thead>
+              <tr>
+                {% for col in t.columns %}
+                <th style="padding:3px 8px;background:rgba(76,175,80,0.12);
+                           border:1px solid var(--border);font-weight:600;
+                           text-align:left;white-space:nowrap;">{{ col }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in t.rows[:5] %}
+              <tr>
+                {% for col in t.columns %}
+                <td style="padding:3px 8px;border:1px solid var(--border);
+                           max-width:160px;overflow:hidden;text-overflow:ellipsis;
+                           white-space:nowrap;"
+                    title="{{ row.get(col, '') }}">{{ row.get(col, '') }}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+              {% if t.row_count > 5 %}
+              <tr>
+                <td colspan="{{ t.columns|length }}"
+                    style="padding:3px 8px;border:1px solid var(--border);
+                           text-align:center;color:var(--text-muted);font-style:italic;">
+                  … {{ t.row_count - 5 }} more rows
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div style="padding:12px 16px;border-top:2px solid #7C84E8;
+              background:rgba(124,132,232,0.06);display:flex;justify-content:flex-end;">
+    <button type="submit" class="btn btn-primary">
+      ✓ Save as schema for all {{ doc.class_name }} docs
+    </button>
+  </div>
+</form>
+
+{# ── NORMAL FIELDS (LEARNING / LEARNED / OPTIMISED) ──── #}
+{% else %}
+<div style="display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--border);
+            background:var(--surface-1);">
+  {% for tier, label, color in [(1,'Text layer','#00C97A'),(2,'OCR','#F5A623'),(3,'AI Vision','#7C84E8')] %}
+  <div class="flex items-center gap-6">
+    <span style="width:7px;height:7px;border-radius:50%;background:{{ color }};flex:none;"></span>
+    <span class="fs-11 text-dim">{{ label }}</span>
+  </div>
+  {% endfor %}
+  <span class="fs-11 text-dim" style="margin-left:auto;">Click to highlight</span>
+</div>
+
+{% for f in doc.fields %}
+<div class="field-row"
+     id="field-{{ loop.index }}"
+     title="{{ f.name }} · {{ f.tier_label }} · {{ f.model }}">
+  <span class="tier-dot" style="background:{{ f.tier_color }};"></span>
+  <span class="field-name">{{ f.name }}</span>
+  <span class="field-value">{{ f.value | replace("\n", " · ") }}</span>
+  <span class="field-conf">{{ f.confidence }}</span>
+</div>
+{% if f.address %}
+{# ── Address card — shown below the field row when AddressAgent has parsed it ── #}
+<div style="margin:0 8px 4px 24px;padding:8px 10px;
+            background:rgba(0,201,122,0.06);border:1px solid rgba(0,201,122,0.25);
+            border-radius:5px;font-size:11px;">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+    <span style="font-size:10px;font-weight:700;letter-spacing:.04em;color:#00C97A;">
+      📍 ADDRESS
+    </span>
+    {% if f.address.verified %}
+    <span style="font-size:10px;font-weight:600;color:#00C97A;
+                 background:rgba(0,201,122,0.12);padding:1px 5px;border-radius:3px;">
+      ✓ {{ f.address.verification_source | replace("_", " ") | title }}
+    </span>
+    {% if f.address.lat %}
+    <span style="font-size:10px;color:var(--text-muted);">
+      {{ "%.4f"|format(f.address.lat) }}, {{ "%.4f"|format(f.address.lng) }}
+    </span>
+    {% endif %}
+    {% else %}
+    <span style="font-size:10px;color:var(--text-muted);">unverified</span>
+    {% endif %}
+    {% if f.address.country_code %}
+    <span style="margin-left:auto;font-size:12px;" title="{{ f.address.country }}">
+      {{ f.address.country_code }}
+    </span>
+    {% endif %}
+  </div>
+  <div style="display:grid;grid-template-columns:80px 1fr;row-gap:2px;column-gap:8px;
+              color:var(--text);">
+    {% if f.address.name %}
+    <span style="color:var(--text-muted);">Name</span>
+    <span style="font-weight:600;">{{ f.address.name }}</span>
+    {% endif %}
+    {% if f.address.line1 %}
+    <span style="color:var(--text-muted);">Line 1</span>
+    <span>{{ f.address.line1 }}</span>
+    {% endif %}
+    {% if f.address.line2 %}
+    <span style="color:var(--text-muted);">Line 2</span>
+    <span>{{ f.address.line2 }}</span>
+    {% endif %}
+    {% if f.address.city %}
+    <span style="color:var(--text-muted);">City</span>
+    <span>{{ f.address.city }}</span>
+    {% endif %}
+    {% if f.address.state %}
+    <span style="color:var(--text-muted);">State/County</span>
+    <span>{{ f.address.state }}</span>
+    {% endif %}
+    {% if f.address.postcode %}
+    <span style="color:var(--text-muted);">Postcode</span>
+    <span style="font-family:'JetBrains Mono',monospace;">{{ f.address.postcode }}</span>
+    {% endif %}
+    {% if f.address.country %}
+    <span style="color:var(--text-muted);">Country</span>
+    <span>{{ f.address.country }}</span>
+    {% endif %}
+    {% if f.address.admin_district %}
+    <span style="color:var(--text-muted);">District</span>
+    <span style="color:var(--text-muted);">{{ f.address.admin_district }}</span>
+    {% endif %}
+  </div>
+  {% if f.address.parse_error %}
+  <div style="margin-top:4px;font-size:10px;color:#F5A623;">
+    ⚠ {{ f.address.parse_error }}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endfor %}
+
+{# ── TABLE FIELDS (learning+ mode) ── #}
+{% if has_tables %}
+<div style="padding:5px 14px 3px;font-size:10px;font-weight:600;letter-spacing:.05em;
+            color:#4CAF50;text-transform:uppercase;background:var(--surface-1);
+            border-top:2px solid rgba(76,175,80,0.3);border-bottom:1px solid var(--border);">
+  📋 Table Fields ({{ tables|length }})
+</div>
+{% for t in tables %}
+<details style="border-bottom:1px solid var(--border);">
+  <summary style="display:flex;align-items:center;gap:8px;padding:7px 14px;
+                  cursor:pointer;background:var(--surface-1);list-style:none;user-select:none;">
+    <span class="tier-dot" style="background:#4CAF50;"></span>
+    <span class="field-name">{{ t.name }}</span>
+    <span class="field-value" style="color:var(--text-muted);">{{ t.row_count }} rows</span>
+    <span class="field-conf" style="color:#4CAF50;font-size:10px;font-weight:700;">TABLE ▶</span>
+  </summary>
+  {% if t.rows %}
+  <div style="padding:6px 14px 10px 22px;overflow-x:auto;">
+    <table style="font-size:10px;border-collapse:collapse;width:100%;">
+      <thead>
+        <tr>
+          {% for col in t.columns %}
+          <th style="padding:3px 8px;background:rgba(76,175,80,0.1);
+                     border:1px solid var(--border);font-weight:600;
+                     text-align:left;white-space:nowrap;">{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in t.rows[:10] %}
+        <tr>
+          {% for col in t.columns %}
+          <td style="padding:3px 8px;border:1px solid var(--border);
+                     max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="{{ row.get(col, '') }}">{{ row.get(col, '') }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% if t.row_count > 10 %}
+        <tr>
+          <td colspan="{{ t.columns|length }}"
+              style="padding:3px 8px;border:1px solid var(--border);
+                     text-align:center;color:var(--text-muted);font-style:italic;">
+            … {{ t.row_count - 10 }} more rows
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</details>
+{% endfor %}
+{% endif %}
+
+{% endif %}
+
+{% else %}
+{# No fields — re-extraction ran but still got nothing #}
+<div style="padding:32px 24px;text-align:center;">
+  <div class="mono fs-12 text-dim" style="margin-bottom:8px;">⚠ No fields found</div>
+  <div class="fs-12 text-dim" style="line-height:1.6;">
+    The AI scanned the document but couldn't extract any fields.<br>
+    This may be a scanned image — check the Pipeline trail tab for details.
+  </div>
+  <button class="btn btn-secondary btn-sm" style="margin-top:14px;"
+          hx-post="/dashboard/docs/{{ doc.id }}/re-extract"
+          hx-target="#fields-panel"
+          hx-swap="innerHTML">
+    Try again
+  </button>
+</div>
+{% endif %}

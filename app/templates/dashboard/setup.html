@@ -1,0 +1,537 @@
+{% extends "base.html" %}
+{% block title %}Setup{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <!-- ── Page header ────────────────────────────────────────────────────── -->
+  <div class="page-header">
+    <div class="page-title">Client Setup</div>
+    <div class="page-subtitle">
+      AI learns your documents. You confirm what it finds. Fast parsing is earned — not assumed.
+    </div>
+  </div>
+
+  <!-- ── Top row: client profile + engine status ────────────────────────── -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px;">
+
+    <!-- Client profile -->
+    <div class="panel">
+      <div class="panel-title">Client profile</div>
+      <p class="fs-12 text-muted" style="margin:8px 0 16px;">
+        All document types and AI learnings belong to this client.
+      </p>
+      <form hx-post="/dashboard/setup/client" hx-target="#toast-container" hx-swap="beforeend"
+            style="display:flex;flex-direction:column;gap:12px;">
+        <div class="grid-2" style="gap:12px;">
+          <div class="field-group">
+            <label class="field-label">Short name</label>
+            <input type="text" name="name" class="field-input"
+                   value="{{ client.name if client else '' }}" placeholder="Tata Steel UK" required>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Legal name</label>
+            <input type="text" name="display_name" class="field-input"
+                   value="{{ client.display_name if client else '' }}" placeholder="TATA STEEL LIMITED" required>
+          </div>
+        </div>
+        <div class="grid-2" style="gap:12px;">
+          <div class="field-group">
+            <label class="field-label">Domain</label>
+            <input type="text" name="domain" class="field-input"
+                   value="{{ client.domain if client else '' }}" placeholder="tatasteeleurope.com">
+          </div>
+          <div class="field-group">
+            <label class="field-label">ERP system</label>
+            <input type="text" name="erp_system" class="field-input"
+                   value="{{ client.erp_system if client else '' }}" placeholder="Business Central, SAP…">
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Industry</label>
+          <input type="text" name="industry" class="field-input"
+                 value="{{ client.industry if client else '' }}" placeholder="Steel Manufacturing…">
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button type="submit" class="btn btn-primary btn-sm">Save profile</button>
+          {% if client %}<span class="mono fs-11 text-dim">{{ client.id }}</span>{% endif %}
+        </div>
+      </form>
+    </div>
+
+    <!-- How the learning works -->
+    <div class="panel">
+      <div class="panel-title">How AI learning works</div>
+      <div style="display:flex;flex-direction:column;gap:16px;margin-top:12px;">
+
+        <div style="display:flex;gap:12px;">
+          <div style="flex:none;width:28px;height:28px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--accent);font-weight:600;">1</div>
+          <div>
+            <div class="fs-12 text-text font-medium">AI reads every document — no rules written</div>
+            <div class="fs-11 text-muted">Claude extracts fields from raw document text. No hardcoded patterns needed.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;">
+          <div style="flex:none;width:28px;height:28px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--accent);font-weight:600;">2</div>
+          <div>
+            <div class="fs-12 text-text font-medium">System tracks what it finds</div>
+            <div class="fs-11 text-muted">After each document, field frequency and confidence are accumulated per doc type.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;">
+          <div style="flex:none;width:28px;height:28px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--accent);font-weight:600;">3</div>
+          <div>
+            <div class="fs-12 text-text font-medium">You confirm the schema</div>
+            <div class="fs-11 text-muted">Once consistent patterns emerge (≥10 docs), you review and confirm the field list. AI uses it precisely from then on.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;">
+          <div style="flex:none;width:28px;height:28px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--accent);font-weight:600;">4</div>
+          <div>
+            <div class="fs-12 text-text font-medium">Fast path — earned, not assumed</div>
+            <div class="fs-11 text-muted">For structured doc types (OPTIMISABLE), AI generates regex patterns from its learnings. Future docs use fast parsing; AI only spot-checks.</div>
+          </div>
+        </div>
+      </div>
+
+      {% if not api_key_set %}
+      <div style="margin-top:16px;padding:10px 14px;border-left:2px solid var(--warn);background:#2B1D0A;">
+        <div class="fs-12 text-text">⚠ ANTHROPIC_API_KEY not set — running regex-only fallback</div>
+        <div class="fs-11 text-muted" style="margin-top:4px;">Add your key to .env to enable AI-first learning.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Document type profiles ──────────────────────────────────────────── -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+    <div class="panel-title" style="margin:0;">Document Types</div>
+    <span class="fs-12 text-muted">{{ doc_types | length }} types configured for {{ client.display_name if client else 'this client' }}</span>
+    {% set pending = doc_types | selectattr('needs_attention') | list | length %}
+    {% if pending > 0 %}
+    <span class="badge" style="color:var(--purple);background:#161B3A;">{{ pending }} awaiting confirmation</span>
+    {% endif %}
+  </div>
+
+  <div class="table-wrap">
+    <!-- Table header -->
+    <div style="display:flex;padding:10px 16px;border-bottom:1px solid var(--border);">
+      <span style="width:20px;flex:none;"></span>
+      <span class="tbl-h" style="flex:2.2;">Document type</span>
+      <span class="tbl-h" style="flex:0.6;">Class</span>
+      <span class="tbl-h" style="flex:1.6;">Learning stage</span>
+      <span class="tbl-h" style="flex:0.5;">Docs</span>
+      <span class="tbl-h" style="flex:0.9;">Parsability</span>
+      <span class="tbl-h" style="flex:1.0;"></span>
+    </div>
+
+    {% for dt in doc_types %}
+    <div class="expandable" id="dt-row-{{ dt.id }}">
+
+      <!-- Summary row -->
+      <div class="table-row expand-trigger" style="cursor:pointer;padding:12px 16px;
+           {% if dt.needs_attention %}border-left:2px solid var(--purple);{% endif %}">
+        <span class="expand-icon text-muted" style="flex:none;width:20px;font-size:10px;user-select:none;">▼</span>
+
+        <!-- Name + status badge -->
+        <span style="flex:2.2;display:flex;align-items:center;gap:8px;">
+          <span class="fs-12 text-text">{{ dt.name }}</span>
+          {% if dt.needs_attention %}
+          <span class="badge" style="color:var(--purple);background:#161B3A;font-size:9px;">CONFIRM SCHEMA</span>
+          {% endif %}
+        </span>
+
+        <span class="mono text-dim" style="flex:0.6;font-size:10px;">{{ dt.id }}</span>
+
+        <!-- Stage progress -->
+        <span style="flex:1.6;display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;height:4px;background:var(--border);position:relative;max-width:80px;">
+            <div style="position:absolute;left:0;top:0;height:100%;width:{{ dt.stage_pct }}%;
+                 background:{% if dt.stage_pct == 100 %}var(--accent){% elif dt.stage_pct >= 55 %}#00C97A99{% else %}var(--purple){% endif %};
+                 transition:width 0.3s;"></div>
+          </div>
+          <span class="fs-11 text-muted" style="white-space:nowrap;">{{ dt.stage_label }}</span>
+        </span>
+
+        <span class="mono text-muted" style="flex:0.5;font-size:11px;">{{ dt.doc_count }}</span>
+
+        <!-- Parsability -->
+        <span style="flex:0.9;">
+          {% if dt.parsability == 'OPTIMISABLE' %}
+          <span class="chip" style="font-size:9px;color:var(--accent);background:var(--accent-dim);">OPTIMISABLE</span>
+          {% elif dt.parsability == 'CAN_LEARN' %}
+          <span class="chip" style="font-size:9px;color:var(--warn);background:#2B1D0A;">CAN LEARN</span>
+          {% elif dt.parsability == 'ALWAYS_AI' %}
+          <span class="chip" style="font-size:9px;color:var(--purple);background:#161B3A;">ALWAYS AI</span>
+          {% elif dt.has_fast_patterns %}
+          <span class="chip" style="font-size:9px;color:var(--accent);background:var(--accent-dim);">⚡ FAST PATH</span>
+          {% else %}
+          <span class="chip" style="font-size:9px;color:var(--dim);background:#0E1311;">UNKNOWN</span>
+          {% endif %}
+        </span>
+
+        <span style="flex:1.0;display:flex;justify-content:flex-end;align-items:center;gap:6px;" onclick="event.stopPropagation()">
+          {% if dt.check_signature %}
+          <span class="chip" style="font-size:9px;color:#00C97A;background:rgba(0,201,122,0.12);flex:none;"
+                title="Signature detection enabled">✍ SIG ON</span>
+          {% endif %}
+          {% if dt.needs_attention and dt.dtp_id %}
+          <form hx-post="/dashboard/setup/doctype/{{ dt.dtp_id }}/confirm"
+                hx-target="#schema-confirm-target-{{ dt.id }}" hx-swap="innerHTML">
+            <button class="btn btn-primary btn-sm" type="submit">✓ Confirm schema</button>
+          </form>
+          {% endif %}
+        </span>
+      </div>
+
+      <!-- Expanded panel -->
+      <div class="expand-content">
+        <div style="padding:0 0 0 36px;border-top:1px solid var(--border);">
+          <div class="grid-2" style="gap:0;">
+
+            <!-- Left: field stats + sample upload -->
+            <div style="padding:16px 20px 20px 0;border-right:1px solid var(--border);">
+
+              <!-- Field statistics -->
+              <div class="panel-title" style="margin-bottom:10px;">
+                Field statistics
+                <span class="fs-11 text-dim" style="font-weight:400;margin-left:6px;">
+                  from {{ dt.doc_count }} document{{ 's' if dt.doc_count != 1 else '' }}
+                </span>
+              </div>
+
+              {% if dt.field_stats %}
+              <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                  <thead>
+                    <tr style="border-bottom:1px solid var(--border);">
+                      <th style="text-align:left;padding:4px 8px 6px 0;color:var(--dim);font-weight:500;letter-spacing:.05em;text-transform:uppercase;font-size:9px;">Field</th>
+                      <th style="text-align:center;padding:4px 8px 6px;color:var(--dim);font-weight:500;letter-spacing:.05em;text-transform:uppercase;font-size:9px;">Found in</th>
+                      <th style="text-align:center;padding:4px 8px 6px;color:var(--dim);font-weight:500;letter-spacing:.05em;text-transform:uppercase;font-size:9px;">Avg conf</th>
+                      <th style="text-align:left;padding:4px 0 6px 8px;color:var(--dim);font-weight:500;letter-spacing:.05em;text-transform:uppercase;font-size:9px;">Examples</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for fs in dt.field_stats %}
+                    <tr style="border-bottom:1px solid var(--border);">
+                      <td style="padding:5px 8px 5px 0;">
+                        <span class="mono" style="color:var(--muted);">{{ fs.field }}</span>
+                      </td>
+                      <td style="padding:5px 8px;text-align:center;">
+                        <div style="display:flex;align-items:center;gap:5px;justify-content:center;">
+                          <div style="width:36px;height:4px;background:var(--border);position:relative;">
+                            <div style="position:absolute;left:0;top:0;height:100%;width:{{ (fs.occurrence_rate * 100) | int }}%;
+                                 background:{% if fs.occurrence_rate >= 0.8 %}var(--accent){% elif fs.occurrence_rate >= 0.5 %}var(--warn){% else %}var(--danger){% endif %};"></div>
+                          </div>
+                          <span class="mono" style="color:{% if fs.occurrence_rate >= 0.7 %}var(--accent){% elif fs.occurrence_rate >= 0.4 %}var(--warn){% else %}var(--danger){% endif %};">
+                            {{ "%.0f%%"|format(fs.occurrence_rate * 100) }}
+                          </span>
+                        </div>
+                      </td>
+                      <td style="padding:5px 8px;text-align:center;">
+                        <span class="mono" style="color:{% if fs.avg_confidence >= 0.80 %}var(--accent){% elif fs.avg_confidence >= 0.65 %}var(--warn){% else %}var(--danger){% endif %};">
+                          {% if fs.avg_confidence > 0 %}{{ "%.0f%%"|format(fs.avg_confidence * 100) }}{% else %}—{% endif %}
+                        </span>
+                      </td>
+                      <td style="padding:5px 0 5px 8px;max-width:180px;">
+                        <span class="text-dim" style="font-size:10px;overflow:hidden;display:block;text-overflow:ellipsis;white-space:nowrap;"
+                              title="{{ fs.examples | join(', ') }}">
+                          {{ fs.examples[:2] | join(' · ') }}
+                        </span>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% elif dt.doc_count == 0 %}
+              <p class="fs-12 text-dim" style="margin-bottom:12px;">
+                No documents processed yet. Upload samples below or ingest real documents to start learning.
+              </p>
+              {% else %}
+              <p class="fs-12 text-muted" style="margin-bottom:12px;">
+                {{ dt.doc_count }} doc{{ 's' if dt.doc_count != 1 else '' }} processed — accumulating statistics…
+              </p>
+              {% endif %}
+
+              <!-- Parsability + actions -->
+              {% if dt.dtp_id %}
+              <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+                <div class="panel-title" style="margin-bottom:8px;">Automation potential</div>
+
+                {% if dt.parsability_reason %}
+                <p class="fs-12 text-muted" style="margin-bottom:10px;">{{ dt.parsability_reason }}</p>
+                {% endif %}
+
+                <div id="parsability-{{ dt.dtp_id }}">
+                  {% if dt.parsability == 'ALWAYS_AI' %}
+                  <span class="badge" style="color:var(--purple);background:#161B3A;">Always needs AI</span>
+                  <span class="fs-11 text-dim" style="margin-left:8px;">This doc type is too variable for regex — AI is always needed.</span>
+
+                  {% elif dt.parsability == 'OPTIMISABLE' and not dt.has_fast_patterns %}
+                  <span class="badge" style="color:var(--accent);background:var(--accent-dim);">OPTIMISABLE</span>
+                  <form hx-post="/dashboard/setup/doctype/{{ dt.dtp_id }}/generate-patterns"
+                        hx-target="#parsability-{{ dt.dtp_id }}" hx-swap="outerHTML"
+                        style="display:inline;margin-left:10px;" onclick="event.stopPropagation()">
+                    <button class="btn btn-primary btn-sm" type="submit">⚡ Generate fast patterns</button>
+                  </form>
+
+                  {% elif dt.has_fast_patterns %}
+                  <span class="badge" style="color:var(--accent);background:var(--accent-dim);">⚡ Fast path active</span>
+                  <span class="fs-11 text-muted" style="margin-left:8px;">AI-generated patterns in use. Claude spot-checks 10%.</span>
+
+                  {% elif dt.learning_stage == 'LEARNED' and dt.parsability == 'UNKNOWN' %}
+                  <button class="btn btn-secondary btn-sm"
+                          hx-post="/dashboard/setup/doctype/{{ dt.dtp_id }}/assess-parsability"
+                          hx-target="#parsability-{{ dt.dtp_id }}" hx-swap="outerHTML"
+                          {% if not api_key_set %}disabled title="Requires API key"{% endif %}>
+                    Assess with AI
+                  </button>
+                  <span class="fs-11 text-dim" style="margin-left:8px;">Available once schema is confirmed.</span>
+
+                  {% else %}
+                  <span class="fs-12 text-dim">Available once schema is confirmed (LEARNED stage).</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <!-- Signature detection toggle -->
+              {% if dt.dtp_id %}
+              <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+                <div class="panel-title" style="margin-bottom:6px;">Signature detection</div>
+                <p class="fs-11 text-muted" style="margin-bottom:10px;">
+                  When enabled, the extraction agent scans each new document for a signature
+                  (digital, embedded image, or handwritten) and stores a screenshot crop as proof.
+                </p>
+                {% set sig_color = "var(--accent)" if dt.check_signature else "var(--muted)" %}
+                {% set sig_bg    = "var(--accent-dim)" if dt.check_signature else "var(--surface-2)" %}
+                {% set sig_label = "✍ Signature detection ON" if dt.check_signature else "○ Signature detection OFF" %}
+                {% set sig_note  = "Every new document of this type will be scanned for signatures." if dt.check_signature else "Signature scanning is disabled for this document type." %}
+                <div id="sig-toggle-{{ dt.dtp_id }}">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <button class="btn btn-sm"
+                            style="color:{{ sig_color }};background:{{ sig_bg }};border:1px solid {{ sig_color }};"
+                            hx-post="/dashboard/setup/doctype/{{ dt.dtp_id }}/toggle-signature"
+                            hx-target="#sig-toggle-{{ dt.dtp_id }}" hx-swap="outerHTML">
+                      {{ sig_label }}
+                    </button>
+                    <span class="fs-11 text-dim">{{ sig_note }}</span>
+                  </div>
+                </div>
+              </div>
+              {% endif %}
+
+              {% endif %}
+            </div>
+
+            <!-- Right: schema + sample upload -->
+            <div style="padding:16px 0 20px 20px;">
+
+              <!-- Schema panel -->
+              <div id="schema-confirm-target-{{ dt.id }}">
+                {% if dt.needs_attention and dt.field_schema %}
+                <!-- LEARNED_PROPOSED: schema ready to confirm -->
+                <div style="padding:10px 14px;background:#161B3A;border-left:2px solid var(--purple);margin-bottom:14px;">
+                  <div class="fs-12 text-text font-medium">Schema ready for confirmation</div>
+                  <div class="fs-11 text-muted" style="margin-top:3px;">
+                    The AI has seen {{ dt.doc_count }} documents and identified consistent fields.
+                    Review the stats on the left, then confirm below to lock the schema.
+                  </div>
+                </div>
+                {% endif %}
+
+                <div class="panel-title" style="margin-bottom:8px;">
+                  Field schema
+                  {% if dt.learning_stage == 'LEARNED' or dt.learning_stage == 'OPTIMISED' %}
+                  <span class="chip" style="color:var(--accent);background:var(--accent-dim);font-size:9px;margin-left:6px;">confirmed</span>
+                  {% elif dt.needs_attention %}
+                  <span class="chip" style="color:var(--purple);background:#161B3A;font-size:9px;margin-left:6px;">proposed</span>
+                  {% endif %}
+                </div>
+
+                {% if dt.field_schema %}
+                <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:14px;max-height:260px;overflow-y:auto;">
+                  {% for fname, fdata in dt.field_schema.items() %}
+                  <div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--border);">
+                    <span class="mono fs-11 text-muted" style="flex:none;width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:uppercase;">{{ fname }}</span>
+                    <span class="fs-11 text-dim" style="flex:1;">
+                      {{ fdata.get('description','') if fdata is mapping else '' | truncate(60) }}
+                    </span>
+                    {% if fdata is mapping and fdata.get('required') %}
+                    <span class="chip" style="font-size:8px;color:var(--accent);background:var(--accent-dim);flex:none;">req</span>
+                    {% endif %}
+                  </div>
+                  {% endfor %}
+                </div>
+
+                {% if dt.needs_attention and dt.dtp_id %}
+                <form hx-post="/dashboard/setup/doctype/{{ dt.dtp_id }}/confirm"
+                      hx-target="#schema-confirm-target-{{ dt.id }}" hx-swap="innerHTML">
+                  <button class="btn btn-primary btn-sm" type="submit">✓ Confirm schema &amp; advance to LEARNED</button>
+                </form>
+                {% endif %}
+
+                {% else %}
+                <!-- No schema yet — show default fields as guide -->
+                <p class="fs-12 text-muted" style="margin-bottom:8px;">
+                  Using default field list. Process ≥{{ 10 - dt.doc_count if dt.doc_count < 10 else 0 }} more documents for the AI to propose a custom schema.
+                </p>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;">
+                  {% for f in dt.default_fields %}
+                  <span class="chip mono" style="font-size:10px;color:var(--muted);background:#0E1311;">{{ f }}</span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- AI discovery from samples -->
+                {% if dt.dtp_id %}
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+                  <div class="panel-title" style="margin-bottom:6px;">Accelerate with samples</div>
+                  <p class="fs-11 text-muted" style="margin-bottom:10px;">
+                    Upload 2–5 representative PDFs to kickstart learning before real traffic arrives.
+                  </p>
+
+                  {% if dt.samples %}
+                  <div id="sample-list-{{ dt.id }}" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
+                    {% for s in dt.samples %}
+                    <div class="flex gap-10 items-center" style="padding:5px 8px;background:var(--surface-2);border:1px solid var(--border);">
+                      <span class="mono fs-11 text-muted" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ s.file_name }}</span>
+                      <span class="fs-10 text-dim">{{ s.file_size_kb }} KB</span>
+                      <span class="fs-10 text-dim">{{ s.created_at }}</span>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% else %}
+                  <div id="sample-list-{{ dt.id }}"></div>
+                  {% endif %}
+
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <div class="upload-zone" style="padding:10px 16px;"
+                         id="upload-zone-{{ dt.id }}" onclick="event.stopPropagation()">
+                      <input type="file" accept=".pdf" style="display:none;"
+                             id="sample-file-{{ dt.id }}"
+                             hx-post="/dashboard/setup/doctype/{{ dt.dtp_id }}/sample"
+                             hx-encoding="multipart/form-data"
+                             hx-target="#sample-list-{{ dt.id }}"
+                             hx-swap="beforeend"
+                             name="sample_pdf">
+                      <span class="mono fs-11 text-dim">Drop PDF or click</span>
+                    </div>
+
+                    {% if dt.samples %}
+                    <button class="btn btn-secondary btn-sm"
+                            hx-post="/dashboard/setup/doctype/{{ dt.dtp_id }}/discover"
+                            hx-target="#schema-confirm-target-{{ dt.id }}"
+                            hx-swap="innerHTML"
+                            hx-indicator="#disc-spin-{{ dt.id }}"
+                            {% if not api_key_set %}disabled title="Requires API key"{% endif %}
+                            onclick="event.stopPropagation()">
+                      <span id="disc-spin-{{ dt.id }}" class="spinner htmx-indicator" style="display:none;"></span>
+                      Analyse samples with AI
+                    </button>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endif %}
+              </div><!-- /schema-confirm-target -->
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<style>
+  .tbl-h {
+    font-size: 9px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--dim);
+  }
+  .upload-zone {
+    border: 1px dashed var(--border-2);
+    cursor: pointer;
+    transition: border-color .15s;
+    display: inline-flex;
+    align-items: center;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; }
+</style>
+
+<!-- ── Danger zone ──────────────────────────────────────────────────────── -->
+<div class="panel" style="border-color:var(--danger);margin-top:28px;">
+  <div class="panel-title" style="color:var(--danger);">Danger zone</div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:13px;color:var(--text);font-weight:500;margin-bottom:4px;">
+        Full system reset
+      </div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7;max-width:520px;">
+        Deletes <strong style="color:var(--text);">all</strong> documents, document types, variants,
+        extracted fields, and learned schemas. The system will start completely blank.
+        Upload fresh documents after restarting the server to let AI discover your document types
+        from scratch. <strong style="color:var(--danger);">This cannot be undone.</strong>
+      </div>
+    </div>
+    <div style="flex:none;padding-top:4px;">
+      <button class="btn btn-sm"
+              style="background:transparent;border:1px solid var(--danger);color:var(--danger);padding:6px 16px;"
+              hx-post="/dashboard/settings/nuclear-reset"
+              hx-target="#toast-container"
+              hx-swap="beforeend"
+              hx-confirm="⚠️ This will permanently delete ALL documents, document types, and learned data. Are you absolutely sure?">
+        ↺ Full Reset
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Wire file input change for HTMX upload
+  document.addEventListener('change', e => {
+    const input = e.target;
+    if (input.type === 'file' && input.name === 'sample_pdf' && input.files.length > 0) {
+      htmx.trigger(input, 'change');
+    }
+  });
+
+  // Workaround: build FormData for file upload since HTMX needs it
+  document.addEventListener('htmx:configRequest', e => {
+    const el = e.detail.elt;
+    if (el.type === 'file' && el.name === 'sample_pdf' && el.files.length > 0) {
+      const fd = new FormData();
+      fd.append('sample_pdf', el.files[0]);
+      e.detail.parameters = fd;
+    }
+  });
+</script>
+
+<!-- ── Pipeline stage toggles ──────────────────────────────────────────── -->
+<div class="panel" style="margin-top:28px;">
+  <div class="panel-title" style="margin-bottom:4px;">Pipeline configuration</div>
+  <div class="fs-12 text-dim" style="margin-bottom:16px;">
+    Toggle stages on or off. Classification and Extraction cannot be disabled —
+    every other stage can be skipped independently. Changes take effect on the
+    next document submitted.
+  </div>
+  <div hx-get="/dashboard/setup/pipeline"
+       hx-trigger="load"
+       hx-swap="innerHTML">
+    <div class="text-dim fs-12">Loading pipeline stages…</div>
+  </div>
+</div>
+
+{% endblock %}

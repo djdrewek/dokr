@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<div class="page" id="overview-root">
+
+  <!-- Header -->
+  <div class="page-header flex items-center">
+    <div class="flex-1">
+      <div class="page-title">Overview</div>
+      <div class="page-subtitle">Pipeline health at a glance</div>
+    </div>
+    <a href="/dashboard/ingest" class="btn btn-primary">+ Ingest document</a>
+  </div>
+
+  <!-- Stats — auto-refresh every 5s -->
+  <div id="stats-region"
+       hx-get="/dashboard/partials/stats"
+       hx-trigger="every 5s"
+       hx-swap="innerHTML">
+    {% include "dashboard/partials/stats.html" %}
+  </div>
+
+  <!-- Two-column: recent activity + system status -->
+  <div class="grid-2" style="gap:24px;">
+
+    <!-- Recent documents -->
+    <div>
+      <div class="flex items-center mb-16">
+        <div class="fw-500 flex-1">Recent documents</div>
+        <a href="/dashboard/queue" class="fs-12 text-muted">View all →</a>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="col-head" style="flex:2.2">File</span>
+          <span class="col-head" style="flex:1.2">Status</span>
+          <span class="col-head" style="flex:0.8">Class</span>
+          <span class="col-head" style="flex:0.7">Time</span>
+        </div>
+        {% if recent %}
+          {% for d in recent %}
+          <a href="/dashboard/queue?status=ALL#{{ d.id }}" class="table-row" style="display:flex;">
+            <span class="truncate flex-1" style="flex:2.2; color:var(--text); font-size:12px;">{{ d.file_name }}</span>
+            <span style="flex:1.2;">
+              <span class="badge"
+                    style="color:{{ d.status_color }};background:{{ d.status_bg }};">
+                {{ d.status | replace('_', ' ') }}
+              </span>
+            </span>
+            <span class="mono text-muted" style="flex:0.8;font-size:11px;">{{ d.document_class }}</span>
+            <span class="mono text-dim" style="flex:0.7;font-size:11px;">{{ d.created_at }}</span>
+          </a>
+          {% endfor %}
+        {% else %}
+          <div class="table-empty">No documents yet — ingest one above</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Right column: system + AI mode -->
+    <div style="display:flex;flex-direction:column;gap:20px;">
+
+      <!-- System status -->
+      <div class="panel">
+        <div class="panel-title">System status</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <!-- Anthropic API -->
+          <div class="flex items-center gap-12">
+            <span style="width:8px;height:8px;border-radius:50%;flex:none;
+              background:{% if api_key_set %}var(--accent){% else %}var(--danger){% endif %};"></span>
+            <span class="flex-1">Anthropic API</span>
+            <span class="mono fs-11 text-muted">{% if api_key_set %}Connected{% else %}Not set{% endif %}</span>
+          </div>
+          <!-- SharePoint -->
+          <div class="flex items-center gap-12">
+            <span style="width:8px;height:8px;border-radius:50%;flex:none;
+              background:{% if sp_connected %}var(--accent){% else %}var(--dim){% endif %};"></span>
+            <span class="flex-1">SharePoint</span>
+            <span class="mono fs-11 text-muted">{% if sp_connected %}Connected{% else %}Stub mode{% endif %}</span>
+          </div>
+          <!-- Business Central -->
+          <div class="flex items-center gap-12">
+            <span style="width:8px;height:8px;border-radius:50%;flex:none;
+              background:{% if bc_connected %}var(--accent){% else %}var(--dim){% endif %};"></span>
+            <span class="flex-1">Business Central</span>
+            <span class="mono fs-11 text-muted">{% if bc_connected %}Connected{% else %}Stub mode{% endif %}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI pipeline mode -->
+      <div class="panel">
+        <div class="panel-title">AI pipeline mode</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          {% for key, label in [('classification','Classification'), ('extraction','Extraction'), ('governance','Governance')] %}
+          <div class="flex items-center gap-12">
+            <span class="flex-1 text-muted" style="font-size:12px;">{{ label }}</span>
+            <span class="chip">{{ ai_mode[key] }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="mt-12">
+          <a href="/dashboard/system" class="fs-12 text-muted">Configure →</a>
+        </div>
+      </div>
+
+      <!-- Document classes -->
+      <div class="panel">
+        <div class="panel-title">Known document classes ({{ classes|length }})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          {% for cls in classes[:16] %}
+          <span class="chip" style="font-size:10px;">{{ cls.id }}</span>
+          {% endfor %}
+          {% if classes|length > 16 %}
+          <span class="fs-11 text-dim" style="align-self:center;">+{{ classes|length - 16 }} more</span>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}

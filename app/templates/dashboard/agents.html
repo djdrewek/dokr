@@ -1,0 +1,1286 @@
+{% extends "base.html" %}
+{% block title %}Agent Fleet{% endblock %}
+
+{% block extra_styles %}
+/* ── Fleet shell ────────────────────────────────────────────── */
+.fleet-shell {
+  display: flex;
+  height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────── */
+.fleet-sidebar {
+  width: 220px;
+  flex: none;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--surface-1);
+}
+.sb-top {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.sb-section-label {
+  font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--dim); padding: 14px 16px 5px;
+}
+.sb-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px; font-size: 12px; color: var(--muted);
+  cursor: pointer; transition: background 0.1s, color 0.1s;
+  position: relative;
+}
+.sb-link:hover { background: rgba(0,201,122,0.04); color: var(--text); }
+.sb-link.active { color: var(--text); background: rgba(0,201,122,0.07); }
+.sb-link.active::before {
+  content: ''; position: absolute; left: 0; top: 50%;
+  transform: translateY(-50%); width: 2px; height: 20px;
+  background: var(--accent);
+}
+.sb-agent-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px; cursor: pointer;
+  transition: background 0.1s;
+  position: relative;
+}
+.sb-agent-row:hover { background: rgba(0,201,122,0.04); }
+.sb-agent-row.active { background: rgba(0,201,122,0.07); }
+.sb-agent-row.active::before {
+  content: ''; position: absolute; left: 0; top: 50%;
+  transform: translateY(-50%); width: 2px; height: 28px;
+  background: var(--accent);
+}
+.sb-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; font-weight: 700; flex: none; border: 1px solid;
+}
+.sb-agent-name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-agent-stat { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); }
+.sb-online-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); flex: none;
+  animation: blink 2.2s ease-in-out infinite;
+}
+
+/* ── Main area ──────────────────────────────────────────────── */
+.fleet-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+.fleet-stats-bar {
+  display: flex; align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  flex: none; height: 58px;
+}
+.fstat {
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 0 24px; border-right: 1px solid var(--border); gap: 3px;
+}
+.fstat-label {
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+}
+.fstat-value {
+  font-family: 'JetBrains Mono', monospace; font-size: 19px;
+  font-weight: 500; color: var(--text); line-height: 1;
+}
+.fstat-sub { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--dim); }
+
+.fleet-canvas {
+  flex: 1; position: relative; overflow: hidden;
+}
+
+.fleet-footer {
+  height: 36px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px;
+  gap: 8px; flex: none; background: var(--surface-2);
+}
+
+/* ── Right queue panel ──────────────────────────────────────── */
+.fleet-queue {
+  width: 272px; flex: none; border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface-1);
+}
+.queue-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 14px; border-bottom: 1px solid var(--border); flex: none;
+}
+.streaming-badge {
+  display: flex; align-items: center; gap: 5px;
+  font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  font-weight: 700; color: var(--accent); letter-spacing: 0.05em;
+}
+.queue-body { flex: 1; overflow-y: auto; }
+.q-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-bottom: 1px solid var(--border);
+  transition: opacity 0.3s;
+}
+.q-item.new { animation: slideDown 0.22s ease; }
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.q-badge {
+  width: 24px; height: 20px; display: flex; align-items: center;
+  justify-content: center; font-family: 'JetBrains Mono', monospace;
+  font-size: 9px; font-weight: 700; flex: none;
+}
+.q-field {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--text); flex: 1; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.q-cr { font-family: 'JetBrains Mono', monospace; font-size: 10px; flex: none; min-width: 36px; text-align: right; }
+.q-act {
+  font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  font-weight: 700; padding: 2px 6px; border: none;
+  cursor: pointer; flex: none; letter-spacing: 0.03em;
+}
+.queue-foot {
+  padding: 7px 14px; border-top: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: var(--dim); flex: none;
+}
+
+/* ── Constellation (overview) ───────────────────────────────── */
+#view-overview { width: 100%; height: 100%; position: relative; }
+.fleet-label {
+  position: absolute; top: 13px; left: 18px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--muted); letter-spacing: 0.02em; pointer-events: none;
+}
+#constellation { width: 100%; height: 100%; }
+.anode { cursor: pointer; }
+.anode:hover circle:nth-child(2) { stroke-opacity: 0.95 !important; }
+
+/* ── Detail view ────────────────────────────────────────────── */
+#view-detail { display: none; height: 100%; flex-direction: column; }
+.detail-hdr {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 22px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); flex: none;
+}
+.detail-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'JetBrains Mono', monospace; font-size: 15px;
+  font-weight: 700; border: 2px solid; flex: none;
+}
+.detail-body { flex: 1; display: flex; overflow: hidden; }
+.detail-left { flex: 1; overflow-y: auto; padding: 18px 22px; }
+.detail-right {
+  width: 238px; flex: none; border-left: 1px solid var(--border);
+  overflow-y: auto; padding: 14px;
+}
+
+/* Detail stat grid */
+.d-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 1px; background: var(--border);
+  border: 1px solid var(--border); margin-bottom: 18px;
+}
+.d-stat { background: var(--surface-2); padding: 13px 14px; }
+.d-stat-label {
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--muted); margin-bottom: 5px;
+}
+.d-stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 20px; font-weight: 500; color: var(--text); line-height: 1;
+}
+.d-stat-sub { font-size: 10px; color: var(--dim); margin-top: 3px; }
+
+/* Chart */
+.chart-wrap { border: 1px solid var(--border); margin-bottom: 18px; }
+.chart-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* Audit table */
+.audit-wrap { border: 1px solid var(--border); }
+.audit-hdr {
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); font-size: 11px; font-weight: 600;
+  color: var(--text);
+}
+.audit-col { display: flex; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.audit-th { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.audit-td { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+/* Verdict badges */
+.verd { font-family: 'JetBrains Mono',monospace; font-size: 9px; font-weight: 700; padding: 2px 7px; }
+.v-KEEP   { background: rgba(0,201,122,0.1);   color: #00C97A; }
+.v-PRUNE  { background: rgba(255,77,77,0.1);   color: #FF4D4D; }
+.v-SKIP   { background: rgba(245,166,35,0.1);  color: #F5A623; }
+.v-MERGE  { background: rgba(124,132,232,0.1); color: #7C84E8; }
+.v-STABLE { background: rgba(0,201,122,0.06);  color: var(--muted); }
+.v-ACTIVE { background: rgba(0,201,122,0.1);   color: #00C97A; }
+.v-NEW    { background: rgba(124,132,232,0.1); color: #7C84E8; }
+
+/* Recommendations */
+.rec { border: 1px solid var(--border); padding: 10px 11px; margin-bottom: 8px; background: var(--surface-2); }
+.rec-title { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.rec-desc { font-size: 10px; color: var(--muted); line-height: 1.5; margin-bottom: 7px; }
+.rec-saving { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); }
+
+/* ── Detail tabs ────────────────────────────────────────────── */
+.d-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  background: var(--surface-1); flex: none;
+}
+.d-tab {
+  padding: 8px 20px; font-size: 12px; font-weight: 500;
+  color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.1s, border-color 0.1s;
+}
+.d-tab:hover { color: var(--text); }
+.d-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* ── Settings panel ─────────────────────────────────────────── */
+#d-settings-panel { display: none; flex: 1; overflow-y: auto; }
+
+.settings-col {
+  flex: 1; overflow-y: auto; padding: 18px 22px;
+}
+.settings-sidebar {
+  width: 238px; flex: none; border-left: 1px solid var(--border);
+  overflow-y: auto; padding: 16px;
+}
+.s-section {
+  border: 1px solid var(--border); margin-bottom: 14px;
+  background: var(--surface-1);
+}
+.s-section-title {
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+}
+.s-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+}
+.s-row:last-child { border-bottom: none; }
+.s-label-wrap { flex: 1; min-width: 0; }
+.s-label {
+  font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 2px;
+}
+.s-desc { font-size: 10px; color: var(--dim); line-height: 1.4; }
+.s-control { flex: none; }
+
+/* Range slider */
+.s-range-wrap { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+input[type=range].s-range {
+  -webkit-appearance: none; appearance: none;
+  width: 140px; height: 3px;
+  background: var(--border-2); outline: none; cursor: pointer;
+}
+input[type=range].s-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 12px; height: 12px;
+  background: var(--accent); cursor: pointer;
+}
+input[type=range].s-range::-moz-range-thumb {
+  width: 12px; height: 12px;
+  background: var(--accent); cursor: pointer; border: none;
+}
+.s-range-val {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--accent); min-width: 36px; text-align: right;
+}
+
+/* Number stepper */
+.s-stepper {
+  display: flex; align-items: center; gap: 0;
+  border: 1px solid var(--border);
+}
+.s-stepper button {
+  width: 26px; height: 28px; background: var(--surface-2);
+  border: none; color: var(--muted); font-size: 14px;
+  cursor: pointer; transition: background 0.1s, color 0.1s;
+  display: flex; align-items: center; justify-content: center;
+}
+.s-stepper button:hover { background: var(--border); color: var(--text); }
+.s-stepper input {
+  width: 52px; height: 28px; background: var(--surface-1);
+  border: none; border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  color: var(--text); font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; text-align: center; outline: none;
+}
+
+/* Select */
+.s-select {
+  background: var(--surface-1); border: 1px solid var(--border);
+  color: var(--text); font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; padding: 5px 10px; outline: none; cursor: pointer;
+}
+.s-select:focus { border-color: var(--accent); }
+
+/* Save row */
+.s-save-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--surface-2);
+  border-top: 1px solid var(--border); margin-top: 4px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="fleet-shell">
+
+  <!-- ════════════ LEFT SIDEBAR ════════════ -->
+  <aside class="fleet-sidebar">
+    <div class="sb-top">
+      <div style="font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;letter-spacing:.08em;">DOKR / AGENT FLEET</div>
+    </div>
+
+    <div class="sb-section-label">FLEET</div>
+    <div class="sb-link active" id="sb-overview" onclick="showOverview()" style="gap:10px;">
+      <span style="font-size:13px;line-height:1;">◉</span>
+      <span>Overview</span>
+    </div>
+
+    <div class="sb-section-label">AGENTS</div>
+
+    <div class="sb-agent-row" id="sb-EM" onclick="selectAgent('EM')">
+      <div class="sb-avatar" style="color:#7C84E8;border-color:rgba(124,132,232,0.3);background:rgba(124,132,232,0.08);">EM</div>
+      <div style="flex:1;min-width:0;">
+        <div class="sb-agent-name">Efficiency Maximisation</div>
+        <div class="sb-agent-stat">118 calls/min</div>
+      </div>
+      <div class="sb-online-dot"></div>
+    </div>
+
+    <div class="sb-agent-row" id="sb-PS" onclick="selectAgent('PS')">
+      <div class="sb-avatar" style="color:#00C97A;border-color:rgba(0,201,122,0.3);background:rgba(0,201,122,0.07);">PS</div>
+      <div style="flex:1;min-width:0;">
+        <div class="sb-agent-name">Page Skip</div>
+        <div class="sb-agent-stat">96 calls/min</div>
+      </div>
+      <div class="sb-online-dot"></div>
+    </div>
+
+    <div class="sb-agent-row" id="sb-CT" onclick="selectAgent('CT')">
+      <div class="sb-avatar" style="color:#4ECDC4;border-color:rgba(78,205,196,0.3);background:rgba(78,205,196,0.07);">CT</div>
+      <div style="flex:1;min-width:0;">
+        <div class="sb-agent-name">Classification Tuner</div>
+        <div class="sb-agent-stat">64 docs/min</div>
+      </div>
+      <div class="sb-online-dot"></div>
+    </div>
+
+    <div class="sb-agent-row" id="sb-VA" onclick="selectAgent('VA')">
+      <div class="sb-avatar" style="color:#F5A623;border-color:rgba(245,166,35,0.3);background:rgba(245,166,35,0.07);">VA</div>
+      <div style="flex:1;min-width:0;">
+        <div class="sb-agent-name">Validation Auditor</div>
+        <div class="sb-agent-stat">52 holds/min</div>
+      </div>
+      <div class="sb-online-dot"></div>
+    </div>
+
+    <div style="flex:1;"></div>
+    <div class="sb-section-label">SYSTEM</div>
+    <a href="/dashboard/agents" class="sb-link" style="font-size:12px;">Activity log</a>
+    <a href="#" class="sb-link" style="font-size:12px;">Credit budget</a>
+    <a href="/dashboard/setup" class="sb-link" style="font-size:12px;">Settings</a>
+    <div style="height:12px;"></div>
+  </aside>
+
+  <!-- ════════════ MAIN AREA ════════════ -->
+  <main class="fleet-main">
+
+    <!-- Stats bar -->
+    <div class="fleet-stats-bar">
+      <div class="fstat">
+        <div class="fstat-label">CUT RATE</div>
+        <div style="display:flex;align-items:baseline;gap:6px;">
+          <div class="fstat-value" style="color:var(--accent);">47%</div>
+          <div class="fstat-sub">fleet-wide</div>
+        </div>
+      </div>
+      <div class="fstat">
+        <div class="fstat-label">CREDITS SAVED · SESSION</div>
+        <div style="display:flex;align-items:baseline;gap:4px;">
+          <div class="fstat-value" id="cr-saved">174</div>
+          <div class="fstat-sub">cr</div>
+        </div>
+      </div>
+      <div class="fstat">
+        <div class="fstat-label">THROUGHPUT</div>
+        <div style="display:flex;align-items:baseline;gap:4px;">
+          <div class="fstat-value" id="throughput">118</div>
+          <div class="fstat-sub">calls/min</div>
+        </div>
+      </div>
+      <div class="fstat" style="border-right:none;">
+        <div class="fstat-label">AGENTS ONLINE</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="fstat-value">4<span style="color:var(--dim);font-size:13px;">/4</span></div>
+          <div style="display:flex;gap:5px;align-items:center;">
+            <div style="width:7px;height:7px;border-radius:50%;background:#7C84E8;"></div>
+            <div style="width:7px;height:7px;border-radius:50%;background:#00C97A;"></div>
+            <div style="width:7px;height:7px;border-radius:50%;background:#4ECDC4;"></div>
+            <div style="width:7px;height:7px;border-radius:50%;background:#F5A623;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canvas: overview ↔ detail -->
+    <div class="fleet-canvas">
+
+      <!-- ── OVERVIEW: Constellation ── -->
+      <div id="view-overview" style="width:100%;height:100%;position:relative;">
+        <div class="fleet-label" id="fleet-label">// LIVE FLEET · 00:00 · CLICK AN AGENT TO INSPECT</div>
+
+        <svg id="constellation" viewBox="0 0 800 460" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <radialGradient id="rg-center" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#00C97A" stop-opacity="0.14"/>
+              <stop offset="100%" stop-color="#00C97A" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="rg-EM" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#7C84E8" stop-opacity="0.18"/>
+              <stop offset="100%" stop-color="#7C84E8" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="rg-PS" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#00C97A" stop-opacity="0.14"/>
+              <stop offset="100%" stop-color="#00C97A" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="rg-CT" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#4ECDC4" stop-opacity="0.15"/>
+              <stop offset="100%" stop-color="#4ECDC4" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="rg-VA" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#F5A623" stop-opacity="0.16"/>
+              <stop offset="100%" stop-color="#F5A623" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+
+          <!-- Ambient center glow -->
+          <circle cx="400" cy="230" r="85" fill="url(#rg-center)"/>
+
+          <!-- Connection lines -->
+          <line x1="400" y1="230" x2="400" y2="72"  stroke="#00C97A" stroke-width="0.8" stroke-opacity="0.22" stroke-dasharray="3 6"/>
+          <line x1="400" y1="230" x2="155" y2="230" stroke="#00C97A" stroke-width="0.8" stroke-opacity="0.22" stroke-dasharray="3 6"/>
+          <line x1="400" y1="230" x2="645" y2="230" stroke="#00C97A" stroke-width="0.8" stroke-opacity="0.22" stroke-dasharray="3 6"/>
+          <line x1="400" y1="230" x2="400" y2="388" stroke="#00C97A" stroke-width="0.8" stroke-opacity="0.22" stroke-dasharray="3 6"/>
+
+          <!-- Traveling dots (2 per line) -->
+          <circle id="d-EM-0" r="2.8" fill="#7C84E8"/><circle id="d-EM-1" r="2.8" fill="#7C84E8"/>
+          <circle id="d-VA-0" r="2.8" fill="#F5A623"/><circle id="d-VA-1" r="2.8" fill="#F5A623"/>
+          <circle id="d-PS-0" r="2.8" fill="#00C97A"/><circle id="d-PS-1" r="2.8" fill="#00C97A"/>
+          <circle id="d-CT-0" r="2.8" fill="#4ECDC4"/><circle id="d-CT-1" r="2.8" fill="#4ECDC4"/>
+
+          <!-- ── CENTER: Dokr Orchestrator ── -->
+          <circle cx="400" cy="230" r="44" fill="rgba(0,201,122,0.04)" stroke="#00C97A" stroke-width="1" stroke-opacity="0.35"/>
+          <circle id="p-dokr" cx="400" cy="230" r="52" fill="none" stroke="#00C97A" stroke-width="0.8" stroke-opacity="0.16"/>
+          <circle cx="400" cy="230" r="36" fill="var(--surface-2)" stroke="#00C97A" stroke-width="1.5" stroke-opacity="0.65"/>
+          <text x="400" y="225" text-anchor="middle" dominant-baseline="middle" fill="#00C97A" font-family="JetBrains Mono,monospace" font-size="12" font-weight="700">Dokr</text>
+          <text x="400" y="241" text-anchor="middle" dominant-baseline="middle" fill="#3D6B52" font-family="JetBrains Mono,monospace" font-size="6.5" letter-spacing="1.2">ORCHESTRATOR</text>
+
+          <!-- ── EM: top ── -->
+          <g class="anode" id="node-EM" onclick="selectAgent('EM')" transform="translate(400,72)">
+            <circle r="38" fill="url(#rg-EM)"/>
+            <circle r="29" fill="var(--surface-2)" stroke="#7C84E8" stroke-width="1.5" stroke-opacity="0.55"/>
+            <circle id="p-EM" r="35" fill="none" stroke="#7C84E8" stroke-width="0.8" stroke-opacity="0.22"/>
+            <text dy="-4" text-anchor="middle" dominant-baseline="middle" fill="#7C84E8" font-family="JetBrains Mono,monospace" font-size="13" font-weight="700">EM</text>
+            <text dy="10" text-anchor="middle" dominant-baseline="middle" fill="#3D6B52" font-family="JetBrains Mono,monospace" font-size="6.5">Efficiency</text>
+          </g>
+
+          <!-- ── VA: left ── -->
+          <g class="anode" id="node-VA" onclick="selectAgent('VA')" transform="translate(155,230)">
+            <circle r="38" fill="url(#rg-VA)"/>
+            <circle r="29" fill="var(--surface-2)" stroke="#F5A623" stroke-width="1.5" stroke-opacity="0.55"/>
+            <circle id="p-VA" r="35" fill="none" stroke="#F5A623" stroke-width="0.8" stroke-opacity="0.22"/>
+            <text dy="-4" text-anchor="middle" dominant-baseline="middle" fill="#F5A623" font-family="JetBrains Mono,monospace" font-size="13" font-weight="700">VA</text>
+            <text dy="10" text-anchor="middle" dominant-baseline="middle" fill="#3D6B52" font-family="JetBrains Mono,monospace" font-size="6.5">Validator</text>
+          </g>
+
+          <!-- ── PS: right ── -->
+          <g class="anode" id="node-PS" onclick="selectAgent('PS')" transform="translate(645,230)">
+            <circle r="38" fill="url(#rg-PS)"/>
+            <circle r="29" fill="var(--surface-2)" stroke="#00C97A" stroke-width="1.5" stroke-opacity="0.55"/>
+            <circle id="p-PS" r="35" fill="none" stroke="#00C97A" stroke-width="0.8" stroke-opacity="0.22"/>
+            <text dy="-4" text-anchor="middle" dominant-baseline="middle" fill="#00C97A" font-family="JetBrains Mono,monospace" font-size="13" font-weight="700">PS</text>
+            <text dy="10" text-anchor="middle" dominant-baseline="middle" fill="#3D6B52" font-family="JetBrains Mono,monospace" font-size="6.5">Page Skip</text>
+          </g>
+
+          <!-- ── CT: bottom ── -->
+          <g class="anode" id="node-CT" onclick="selectAgent('CT')" transform="translate(400,388)">
+            <circle r="38" fill="url(#rg-CT)"/>
+            <circle r="29" fill="var(--surface-2)" stroke="#4ECDC4" stroke-width="1.5" stroke-opacity="0.55"/>
+            <circle id="p-CT" r="35" fill="none" stroke="#4ECDC4" stroke-width="0.8" stroke-opacity="0.22"/>
+            <text dy="-4" text-anchor="middle" dominant-baseline="middle" fill="#4ECDC4" font-family="JetBrains Mono,monospace" font-size="13" font-weight="700">CT</text>
+            <text dy="10" text-anchor="middle" dominant-baseline="middle" fill="#3D6B52" font-family="JetBrains Mono,monospace" font-size="6.5">Classifier</text>
+          </g>
+        </svg>
+      </div>
+
+      <!-- ── DETAIL VIEW ── -->
+      <div id="view-detail">
+
+        <!-- Detail header -->
+        <div class="detail-hdr">
+          <button onclick="showOverview()"
+                  style="background:none;border:none;color:var(--muted);font-size:18px;
+                         padding:0 4px 0 0;cursor:pointer;line-height:1;"
+                  title="Back to fleet">←</button>
+          <div class="detail-avatar" id="d-avatar">EM</div>
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--text);" id="d-name">Efficiency Maximisation</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px;" id="d-sub">field_usage_audit · Schema Health</div>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:14px;">
+            <div class="toggle-wrap">
+              <span style="font-size:11px;color:var(--muted);">Active</span>
+              <label class="toggle">
+                <input type="checkbox" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <button id="d-run-btn" class="btn btn-primary btn-sm" onclick="runDetailAgent()">▶ Run Now</button>
+          </div>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="d-tabs">
+          <div class="d-tab active" id="tab-analytics" onclick="switchTab('analytics')">Analytics</div>
+          <div class="d-tab" id="tab-settings" onclick="switchTab('settings')">⚙ Settings</div>
+        </div>
+
+        <!-- Analytics panel -->
+        <div id="d-analytics-panel" class="detail-body">
+
+          <!-- Left column -->
+          <div class="detail-left">
+            <!-- Stat cards -->
+            <div class="d-stats" id="d-stats"></div>
+
+            <!-- Trend chart -->
+            <div class="chart-wrap">
+              <div class="chart-hdr">
+                <span style="font-size:11px;font-weight:600;color:var(--text);" id="d-chart-title">14-day savings trend</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);">latest bar highlighted</span>
+              </div>
+              <div style="padding:10px 16px 12px;">
+                <canvas id="d-chart" height="56"></canvas>
+              </div>
+            </div>
+
+            <!-- Audit table -->
+            <div class="audit-wrap">
+              <div class="audit-hdr" id="d-audit-title">Field audit</div>
+              <div id="d-audit-body"></div>
+            </div>
+          </div>
+
+          <!-- Right column -->
+          <div class="detail-right">
+            <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:10px;">Recommendations</div>
+            <div id="d-recs"></div>
+            <div style="font-size:11px;font-weight:600;color:var(--text);margin:14px 0 7px;">Activity</div>
+            <div id="d-feed" style="display:flex;flex-direction:column;gap:3px;"></div>
+          </div>
+
+        </div><!-- /analytics panel -->
+
+        <!-- Settings panel -->
+        <div id="d-settings-panel" style="display:none;flex:1;overflow:hidden;flex-direction:row;">
+          <div class="settings-col" id="d-settings-body">
+            <!-- populated by renderSettings() -->
+          </div>
+          <div class="settings-sidebar">
+            <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:10px;">About these settings</div>
+            <div id="d-settings-help" style="font-size:11px;color:var(--muted);line-height:1.7;"></div>
+            <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+              <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px;">Reset</div>
+              <button class="btn btn-secondary btn-sm" style="width:100%;"
+                      onclick="resetSettings()">↺ Reset to defaults</button>
+            </div>
+          </div>
+        </div><!-- /settings panel -->
+
+      </div><!-- /view-detail -->
+
+    </div><!-- /fleet-canvas -->
+
+    <!-- Footer -->
+    <div class="fleet-footer">
+      <div class="live-dot"></div>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);">
+        <span id="rec-count">9</span> standing recommendations across the fleet
+      </span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);margin-left:8px;">
+        <span style="color:var(--accent);">78,290</span> cr recoverable / month
+      </span>
+    </div>
+  </main>
+
+  <!-- ════════════ RIGHT QUEUE ════════════ -->
+  <aside class="fleet-queue">
+    <div class="queue-hdr">
+      <span style="font-size:12px;font-weight:600;color:var(--text);">Live task queue</span>
+      <div class="streaming-badge"><div class="live-dot"></div>STREAMING</div>
+    </div>
+    <div class="queue-body" id="q-body"></div>
+    <div class="queue-foot">
+      reviewed <span id="q-rev">17</span>&nbsp;·&nbsp;cut <span id="q-cut">8</span>
+    </div>
+  </aside>
+
+</div><!-- /fleet-shell -->
+
+<script>
+// ── Agent data ─────────────────────────────────────────────────────────
+const AGENTS = {
+  EM: {
+    name:  'field_usage_audit',
+    label: 'Efficiency Maximisation',
+    sub:   'field_usage_audit · Schema Health · ~5–10s',
+    color: '#7C84E8',
+    colorBg: 'rgba(124,132,232,0.12)',
+    stats: [
+      { label:'Credits Saved / Mo', value:'41,800', sub:'cr',             hi:true  },
+      { label:'Cut Rate',           value:'38%',    sub:'schema-wide',    hi:true  },
+      { label:'Fields Reviewed',    value:'1.28M',  sub:'last 30 days',   hi:false },
+      { label:'Field Usage',        value:'61%',    sub:'avg utilisation', hi:false },
+    ],
+    chart: [3200,4100,2800,5200,4600,3900,5800,4200,6100,5500,4800,6300,5900,7200],
+    chartTitle: '14-day credit savings',
+    auditTitle: 'Field extraction audit',
+    headers: ['Field','Calls/mo','Downstream','Cost/mo','Verdict'],
+    rows: [
+      ['supplier_ref',    '1,240','100%','26 cr','KEEP'],
+      ['material_number', '1,180','94%', '22 cr','KEEP'],
+      ['delivery_date',   '1,180','87%', '18 cr','KEEP'],
+      ['tax_id',          '960', '81%', '21 cr','KEEP'],
+      ['vendor',          '880', '76%', '12 cr','KEEP'],
+      ['discount_pct',    '420', '12%', '14 cr','PRUNE'],
+      ['project_code',    '180', '4%',  '18 cr','PRUNE'],
+      ['customer_ref_ext','90',  '0%',  '26 cr','PRUNE'],
+    ],
+    recs: [
+      { title:'Prune 3 dead fields',    desc:'discount_pct, project_code, customer_ref_ext never flow downstream — removing saves 58 cr/mo',     saving:'+58 cr/mo' },
+      { title:'Consolidate ref fields', desc:'supplier_ref and vendor overlap 94% of the time; merge to a single canonical field',                saving:'+26 cr/mo' },
+    ],
+    feed: ['tax_id PRUNE → 21 cr saved','supplier_ref KEEP','material_no KEEP','vendor KEEP','discount_pct PRUNE → 14 cr'],
+  },
+  PS: {
+    name:  'page_score_audit',
+    label: 'Page Skip',
+    sub:   'page_score_audit · Cost Optimisation · ~2–5s',
+    color: '#00C97A',
+    colorBg: 'rgba(0,201,122,0.09)',
+    stats: [
+      { label:'Pages Skipped / Mo', value:'22,400', sub:'pages',          hi:true  },
+      { label:'Token Saving',       value:'63%',    sub:'avg per doc',    hi:true  },
+      { label:'Pages Profiled',     value:'184',    sub:'unique pages',   hi:false },
+      { label:'Skip Confidence',    value:'96%',    sub:'avg certainty',  hi:false },
+    ],
+    chart: [1800,2400,2100,3100,2700,2900,3400,2600,3800,3300,2800,4100,3700,4600],
+    chartTitle: '14-day pages skipped',
+    auditTitle: 'Page skip map',
+    headers: ['Page','Content type','Fields found','Saving/skip','Verdict'],
+    rows: [
+      ['Page 2','Terms & Conditions','0%',  '18 cr','SKIP'],
+      ['Page 4','Appendix / Legal',  '2%',  '18 cr','SKIP'],
+      ['Page 7','Blank / Filler',    '0%',  '18 cr','SKIP'],
+      ['Page 1','Header / Summary',  '88%', '—',    'KEEP'],
+      ['Page 3','Line Items',        '95%', '—',    'KEEP'],
+      ['Page 5','Delivery Schedule', '71%', '—',    'KEEP'],
+      ['Page 6','Pricing Breakdown', '64%', '—',    'KEEP'],
+    ],
+    recs: [
+      { title:'Add page 9 to skip list', desc:'Page 9 (Signature block) has 0% field yield across last 40 docs', saving:'+9 cr/doc' },
+      { title:'Review page 6 confidence', desc:'Skip confidence dropped to 58% — may contain new schedule fields', saving:'—' },
+    ],
+    feed: ['Page 4 SKIP → 18 cr','Page 2 SKIP → 18 cr','Page 1 KEEP','Page 3 KEEP','Page 7 SKIP → 18 cr'],
+  },
+  CT: {
+    name:  'cost_optimisation_report',
+    label: 'Classification Tuner',
+    sub:   'cost_optimisation_report · Cost Optimisation · ~2–3s',
+    color: '#4ECDC4',
+    colorBg: 'rgba(78,205,196,0.1)',
+    stats: [
+      { label:'Routing Accuracy',     value:'97.2%', sub:'last 30 days',     hi:true  },
+      { label:'Corrections Learned',  value:'34',    sub:'operator edits',   hi:false },
+      { label:'Misroutes',            value:'3',     sub:'last 7 days',      hi:false, warn:true },
+      { label:'Classes Active',       value:'12',    sub:'document types',   hi:false },
+    ],
+    chart: [940,970,950,980,960,985,990,975,988,994,970,996,991,997],
+    chartTitle: '14-day routing accuracy %',
+    auditTitle: 'Class precision table',
+    headers: ['Class','Precision','Collision','Docs/mo','Verdict'],
+    rows: [
+      ['Purchase Order',   '99.1%','none',             '340','STABLE'],
+      ['Invoice',          '98.4%','none',             '280','STABLE'],
+      ['Packing List',     '94.2%','Remittance (12%)', '160','MERGE'],
+      ['Remittance Advice','71.2%','Invoice (88%)',    '90', 'MERGE'],
+      ['Bill of Lading',   '97.8%','none',             '120','STABLE'],
+      ['Delivery Note',    '96.1%','none',             '95', 'STABLE'],
+      ['Letter of Credit', '93.7%','none',             '44', 'STABLE'],
+    ],
+    recs: [
+      { title:'Merge Packing List / Remittance', desc:'These classes share 88% of keywords — a combined class with a differentiator eliminates misrouting', saving:'-3 misroutes/wk' },
+      { title:'Retrain on Letter of Credit',     desc:'Precision at 93.7% is below target — 8 corrections this month suggest schema drift', saving:'+3.5% accuracy' },
+    ],
+    feed: ['packing_list → MERGE signal','purchase_order STABLE','invoice STABLE','remittance MERGE signal','bol STABLE'],
+  },
+  VA: {
+    name:  'extraction_quality_audit',
+    label: 'Validation Auditor',
+    sub:   'extraction_quality_audit · Quality · ~5–15s',
+    color: '#F5A623',
+    colorBg: 'rgba(245,166,35,0.1)',
+    stats: [
+      { label:'Match Rate',          value:'89%',  sub:'ERP confirmed',  hi:true  },
+      { label:'Holds / Day',         value:'52',   sub:'avg flagged',    hi:false, warn:true },
+      { label:'Rules Active',        value:'18',   sub:'validation rules',hi:false },
+      { label:'False Positive Rate', value:'4.2%', sub:'last 30 days',   hi:false },
+    ],
+    chart: [82,85,81,87,84,88,86,90,88,91,89,93,90,94],
+    chartTitle: '14-day match rate %',
+    auditTitle: 'Match-rule performance',
+    headers: ['Rule','Matches/mo','False +','Saving','Verdict'],
+    rows: [
+      ['total == line_items sum',  '820','1.2%','—',     'ACTIVE'],
+      ['delivery_date >= issued',  '760','0.4%','—',     'ACTIVE'],
+      ['vendor exists in ERP',     '680','2.1%','—',     'ACTIVE'],
+      ['tax_id format valid',      '540','0.8%','+12 cr','ACTIVE'],
+      ['po_number matches header', '420','3.4%','—',     'ACTIVE'],
+      ['currency code ISO-4217',   '380','0.2%','+9 cr', 'ACTIVE'],
+      ['unit_price × qty == line', '290','8.1%','—',     'NEW'],
+    ],
+    recs: [
+      { title:'New rule: unit price × qty', desc:'Line-item arithmetic discrepancy in 6% of POs — proposed new validation rule', saving:'+40 cr/mo' },
+      { title:'Loosen po_number pattern',   desc:'False positive rate 3.4% — format variations in international POs need regex variants', saving:'-12 holds/wk' },
+    ],
+    feed: ['totals KEEP → match 94%','tax_id CLEAR → +21 cr','po_number HOLD','currency KEEP','delivery_date KEEP'],
+  },
+};
+
+// ── Settings schema per agent ──────────────────────────────────────────
+const SETTINGS = {
+  EM: {
+    help: 'Efficiency Maximisation scans your extracted fields and identifies dead weight — fields that are never used downstream, rarely extracted, or duplicate other fields. Tune the thresholds below to control how aggressively it prunes.',
+    sections: [
+      { title: 'Analysis thresholds', items: [
+        { type:'range',  key:'usage_threshold', label:'Prune threshold',   desc:'Flag fields whose downstream usage falls below this percentage', val:15,  min:0,  max:50,  step:5,  unit:'%' },
+        { type:'number', key:'min_calls_month', label:'Min calls / month', desc:'Fields called fewer times than this per month are flagged as candidates for removal', val:100, min:0, max:1000, step:10 },
+        { type:'number', key:'review_window',   label:'Review window',     desc:'Number of recent documents to analyse on each run', val:50, min:10, max:500, step:10 },
+      ]},
+      { title: 'Automation', items: [
+        { type:'toggle', key:'auto_apply_prune', label:'Auto-apply PRUNE',   desc:'Automatically remove fields below threshold without waiting for manual review. Off by default — recommended for production.', val:false },
+        { type:'toggle', key:'alert_on_drop',    label:'Alert on usage drop', desc:'Send a notification when a field\'s downstream usage drops more than 20% in a single week', val:true },
+        { type:'toggle', key:'ignore_table_fields', label:'Ignore table fields', desc:'Skip analysis of line-item table fields (line_items, schedules) — these have different usage patterns', val:true },
+      ]},
+      { title: 'Schedule', items: [
+        { type:'select', key:'schedule', label:'Run schedule', desc:'How often this agent automatically analyses your schema', val:'daily', opts:['manual','hourly','daily','weekly'] },
+      ]},
+    ],
+  },
+  PS: {
+    help: 'Page Skip profiles which pages in your documents consistently yield no useful fields, then skips them during extraction to save tokens. Tune confidence thresholds and learning speed here.',
+    sections: [
+      { title: 'Skip rules', items: [
+        { type:'range',  key:'skip_confidence',    label:'Skip confidence',      desc:'Only skip pages when the agent is at least this confident they\'re empty — lower = more aggressive skipping', val:90, min:50, max:99, step:5, unit:'%' },
+        { type:'range',  key:'min_field_yield',    label:'Min field yield',      desc:'Pages that yield fields on fewer than this percentage of documents are skip candidates', val:5, min:0, max:25, step:1, unit:'%' },
+        { type:'number', key:'min_docs_threshold', label:'Learning threshold',   desc:'Minimum documents the agent must observe before it will skip a page — prevents false positives on new doc types', val:10, min:3, max:50, step:1 },
+      ]},
+      { title: 'Automation', items: [
+        { type:'toggle', key:'auto_add_skip',     label:'Auto-add confirmed skips', desc:'Automatically add pages to the skip list once confidence reaches the threshold, without manual review', val:false },
+        { type:'toggle', key:'alert_regression',  label:'Skip regression alert',    desc:'Notify if a page that was being skipped starts yielding fields again (doc format may have changed)', val:true },
+      ]},
+      { title: 'Schedule', items: [
+        { type:'select', key:'schedule', label:'Run schedule', desc:'How often this agent re-profiles your document pages', val:'hourly', opts:['manual','hourly','daily','weekly'] },
+      ]},
+    ],
+  },
+  CT: {
+    help: 'Classification Tuner monitors routing accuracy across document classes, detects keyword collisions between classes, and proposes merges or retraining when precision drops. Tune precision targets and collision sensitivity here.',
+    sections: [
+      { title: 'Precision targets', items: [
+        { type:'range',  key:'min_precision',        label:'Precision target',      desc:'Classes whose routing precision falls below this percentage are flagged for retraining', val:95, min:80, max:100, step:1, unit:'%' },
+        { type:'range',  key:'collision_threshold',  label:'Collision threshold',   desc:'Flag two classes as colliding when their keyword overlap exceeds this percentage', val:80, min:50, max:98, step:5, unit:'%' },
+        { type:'number', key:'review_window',        label:'Routing window',        desc:'Number of recent documents to check for accuracy on each run', val:100, min:20, max:500, step:20 },
+      ]},
+      { title: 'Automation', items: [
+        { type:'toggle', key:'auto_merge_suggest',    label:'Auto-suggest merges',    desc:'Automatically propose a merge when two classes exceed the collision threshold', val:true },
+        { type:'toggle', key:'alert_accuracy_drop',   label:'Accuracy drop alert',    desc:'Notify when fleet-wide routing accuracy drops below the precision target for any class', val:true },
+        { type:'toggle', key:'learn_from_corrections',label:'Learn from corrections', desc:'Incorporate operator reclassifications into the routing model after 5+ corrections on the same class', val:true },
+      ]},
+      { title: 'Schedule', items: [
+        { type:'select', key:'schedule', label:'Run schedule', desc:'How often routing accuracy is checked across all document classes', val:'daily', opts:['manual','hourly','daily','weekly'] },
+      ]},
+    ],
+  },
+  VA: {
+    help: 'Validation Auditor runs your field values against a set of business rules — arithmetic checks, ERP lookups, format validation — and holds documents that fail. Tune rule sensitivity and auto-hold behaviour here.',
+    sections: [
+      { title: 'Match targets', items: [
+        { type:'range',  key:'match_rate_target',   label:'Match rate target',     desc:'Alert when the ERP match rate across all documents drops below this percentage', val:85, min:60, max:99, step:5, unit:'%' },
+        { type:'range',  key:'max_false_positive',  label:'Max false positive rate',desc:'Flag a validation rule for review when its false positive rate exceeds this percentage', val:5, min:1, max:25, step:1, unit:'%' },
+        { type:'number', key:'auto_hold_threshold', label:'Auto-hold threshold',   desc:'Automatically hold a document for manual review when this many validation rules fail', val:2, min:1, max:10, step:1 },
+        { type:'number', key:'review_window',       label:'Review window',         desc:'Number of recent documents to audit on each run', val:20, min:5, max:200, step:5 },
+      ]},
+      { title: 'Automation', items: [
+        { type:'toggle', key:'auto_apply_rules',    label:'Auto-apply new rules',  desc:'Add AI-proposed validation rules to production without manual approval. Off by default.', val:false },
+        { type:'toggle', key:'alert_hold_spike',    label:'Hold spike alert',      desc:'Notify when the hold rate in a single hour exceeds 10% of processed documents', val:true },
+        { type:'toggle', key:'erp_lookup_enabled',  label:'Live ERP lookup',       desc:'Enable real-time ERP vendor lookups during validation (disable if ERP is under maintenance)', val:true },
+      ]},
+      { title: 'Schedule', items: [
+        { type:'select', key:'schedule', label:'Run schedule', desc:'How often the auditor re-checks your active validation rules', val:'hourly', opts:['manual','hourly','daily','weekly'] },
+      ]},
+    ],
+  },
+};
+
+// Track per-agent setting values (in memory)
+const settingVals = { EM:{}, PS:{}, CT:{}, VA:{} };
+// Initialise from defaults
+Object.keys(SETTINGS).forEach(function(abbr) {
+  SETTINGS[abbr].sections.forEach(function(sec) {
+    sec.items.forEach(function(item) {
+      settingVals[abbr][item.key] = item.val;
+    });
+  });
+});
+
+// ── Queue data ─────────────────────────────────────────────────────────
+const QPOOL = [
+  { a:'VA', ac:'#F5A623', ab:'rgba(245,166,35,0.12)',   f:'tax_id',           cr:'+21 cr', act:'CLEAR',  cc:'#F5A623', cb:'rgba(245,166,35,0.15)'   },
+  { a:'CT', ac:'#4ECDC4', ab:'rgba(78,205,196,0.12)',   f:'packing_list',     cr:'+9 cr',  act:'MERGE',  cc:'#4ECDC4', cb:'rgba(78,205,196,0.15)'   },
+  { a:'PS', ac:'#00C97A', ab:'rgba(0,201,122,0.1)',     f:'Page_4',           cr:'+18 cr', act:'SKIP',   cc:'#00C97A', cb:'rgba(0,201,122,0.12)'    },
+  { a:'EM', ac:'#7C84E8', ab:'rgba(124,132,232,0.12)',  f:'supplier_ref',     cr:'+26 cr', act:'PRUNE',  cc:'#7C84E8', cb:'rgba(124,132,232,0.15)'  },
+  { a:'VA', ac:'#F5A623', ab:'rgba(245,166,35,0.12)',   f:'totals',           cr:'—',      act:'KEEP',   cc:'var(--dim)', cb:'rgba(80,80,80,0.08)'  },
+  { a:'CT', ac:'#4ECDC4', ab:'rgba(78,205,196,0.12)',   f:'purchase_order',   cr:'—',      act:'KEEP',   cc:'var(--dim)', cb:'rgba(80,80,80,0.08)'  },
+  { a:'PS', ac:'#00C97A', ab:'rgba(0,201,122,0.1)',     f:'Page_2',           cr:'—',      act:'KEEP',   cc:'var(--dim)', cb:'rgba(80,80,80,0.08)'  },
+  { a:'EM', ac:'#7C84E8', ab:'rgba(124,132,232,0.12)',  f:'vendor',           cr:'—',      act:'KEEP',   cc:'var(--dim)', cb:'rgba(80,80,80,0.08)'  },
+  { a:'VA', ac:'#F5A623', ab:'rgba(245,166,35,0.12)',   f:'currency_code',    cr:'+9 cr',  act:'CLEAR',  cc:'#F5A623', cb:'rgba(245,166,35,0.15)'   },
+  { a:'EM', ac:'#7C84E8', ab:'rgba(124,132,232,0.12)',  f:'discount_pct',     cr:'+14 cr', act:'PRUNE',  cc:'#7C84E8', cb:'rgba(124,132,232,0.15)'  },
+  { a:'PS', ac:'#00C97A', ab:'rgba(0,201,122,0.1)',     f:'Page_9',           cr:'+18 cr', act:'SKIP',   cc:'#00C97A', cb:'rgba(0,201,122,0.12)'    },
+  { a:'CT', ac:'#4ECDC4', ab:'rgba(78,205,196,0.12)',   f:'remittance',       cr:'+21 cr', act:'MERGE',  cc:'#4ECDC4', cb:'rgba(78,205,196,0.15)'   },
+  { a:'VA', ac:'#F5A623', ab:'rgba(245,166,35,0.12)',   f:'unit_price',       cr:'—',      act:'KEEP',   cc:'var(--dim)', cb:'rgba(80,80,80,0.08)'  },
+  { a:'EM', ac:'#7C84E8', ab:'rgba(124,132,232,0.12)',  f:'project_code',     cr:'+18 cr', act:'PRUNE',  cc:'#7C84E8', cb:'rgba(124,132,232,0.15)'  },
+];
+
+// ── State ──────────────────────────────────────────────────────────────
+let activeAgent = null;
+let sessionStart = Date.now();
+let qRev = 17, qCut = 8, crSaved = 174, tput = 118;
+let qIdx = 0;
+const MAX_Q = 12;
+
+// ── Timer ──────────────────────────────────────────────────────────────
+setInterval(function() {
+  const s = Math.floor((Date.now() - sessionStart) / 1000);
+  const mm = String(Math.floor(s/60)).padStart(2,'0');
+  const ss = String(s%60).padStart(2,'0');
+  const lbl = document.getElementById('fleet-label');
+  if (lbl) lbl.textContent = `// LIVE FLEET · ${mm}:${ss} · CLICK AN AGENT TO INSPECT`;
+  if (Math.random() < 0.3) {
+    tput += Math.random()<0.5 ? 1 : -1;
+    tput = Math.max(108, Math.min(132, tput));
+    const el = document.getElementById('throughput');
+    if (el) el.textContent = tput;
+  }
+}, 1000);
+
+// ── Constellation animation ────────────────────────────────────────────
+const LINES = {
+  EM:{ x1:400,y1:230,x2:400,y2:72  },
+  VA:{ x1:400,y1:230,x2:155,y2:230 },
+  PS:{ x1:400,y1:230,x2:645,y2:230 },
+  CT:{ x1:400,y1:230,x2:400,y2:388 },
+};
+const DOT_PH = { EM:[0,0.5], VA:[0.25,0.75], PS:[0.12,0.62], CT:[0.35,0.85] };
+const SPEEDS = { EM:0.72, VA:1.0, PS:0.85, CT:1.1 };
+let animT = 0;
+const PULSE = {
+  dokr:{ el:null, base:52, amp:5, rate:0.55, ph:0 },
+  EM:  { el:null, base:35, amp:4, rate:0.90, ph:0 },
+  VA:  { el:null, base:35, amp:4, rate:1.10, ph:0.7},
+  PS:  { el:null, base:35, amp:4, rate:0.80, ph:1.4},
+  CT:  { el:null, base:35, amp:4, rate:0.95, ph:2.1},
+};
+
+function initPulseEls() {
+  PULSE.dokr.el = document.getElementById('p-dokr');
+  PULSE.EM.el   = document.getElementById('p-EM');
+  PULSE.VA.el   = document.getElementById('p-VA');
+  PULSE.PS.el   = document.getElementById('p-PS');
+  PULSE.CT.el   = document.getElementById('p-CT');
+}
+
+function animFrame() {
+  animT += 0.003;
+  // Traveling dots
+  for (const [agent, line] of Object.entries(LINES)) {
+    DOT_PH[agent].forEach(function(offset, i) {
+      const t = ((animT * SPEEDS[agent] + offset) % 1);
+      const el = document.getElementById(`d-${agent}-${i}`);
+      if (el) {
+        el.setAttribute('cx', (line.x1 + (line.x2-line.x1)*t).toFixed(1));
+        el.setAttribute('cy', (line.y1 + (line.y2-line.y1)*t).toFixed(1));
+        el.setAttribute('opacity', (0.25 + 0.75 * Math.sin(t * Math.PI)).toFixed(2));
+      }
+    });
+  }
+  // Pulse rings
+  for (const [key, p] of Object.entries(PULSE)) {
+    p.ph += p.rate * 0.012;
+    const r  = p.base + p.amp * Math.sin(p.ph);
+    const op = 0.1 + 0.2 * (0.5 + 0.5 * Math.sin(p.ph));
+    if (p.el) {
+      p.el.setAttribute('r', r.toFixed(1));
+      p.el.setAttribute('stroke-opacity', op.toFixed(2));
+    }
+  }
+  requestAnimationFrame(animFrame);
+}
+window.addEventListener('DOMContentLoaded', function() {
+  initPulseEls();
+  requestAnimationFrame(animFrame);
+  // Seed queue
+  for (let i = 0; i < 8; i++) pushQ(QPOOL[i % QPOOL.length], false);
+  qIdx = 8;
+});
+
+// ── Live queue ─────────────────────────────────────────────────────────
+function pushQ(item, animate) {
+  const qb = document.getElementById('q-body');
+  const div = document.createElement('div');
+  div.className = 'q-item' + (animate ? ' new' : '');
+  div.innerHTML =
+    `<div class="q-badge" style="background:${item.ab};color:${item.ac};">${item.a}</div>` +
+    `<div class="q-field">${item.f}</div>` +
+    `<div class="q-cr" style="color:${item.cr==='—'?'var(--dim)':'var(--accent)'};">${item.cr}</div>` +
+    `<button class="q-act" style="color:${item.cc};background:${item.cb};"` +
+    ` onclick="this.closest('.q-item').style.opacity='0.28';">${item.act}</button>`;
+  qb.insertBefore(div, qb.firstChild);
+  while (qb.children.length > MAX_Q) qb.removeChild(qb.lastChild);
+  qRev++;
+  document.getElementById('q-rev').textContent = qRev;
+  if (item.act !== 'KEEP') {
+    qCut++;
+    document.getElementById('q-cut').textContent = qCut;
+    const n = parseInt((item.cr.match(/\d+/)||['0'])[0]);
+    crSaved += n;
+    document.getElementById('cr-saved').textContent = crSaved;
+  }
+}
+setInterval(function() {
+  pushQ(QPOOL[qIdx % QPOOL.length], true);
+  qIdx++;
+}, 2400);
+
+// ── View switching ─────────────────────────────────────────────────────
+function showOverview() {
+  document.getElementById('view-overview').style.display = 'block';
+  document.getElementById('view-detail').style.display   = 'none';
+  document.getElementById('sb-overview').classList.add('active');
+  ['EM','PS','CT','VA'].forEach(function(a) {
+    document.getElementById('sb-'+a).classList.remove('active');
+  });
+  activeAgent = null;
+}
+
+function selectAgent(abbr) {
+  activeAgent = abbr;
+  const cfg = AGENTS[abbr];
+
+  // Sidebar highlight
+  document.getElementById('sb-overview').classList.remove('active');
+  ['EM','PS','CT','VA'].forEach(function(a) {
+    document.getElementById('sb-'+a).classList.remove('active');
+  });
+  document.getElementById('sb-'+abbr).classList.add('active');
+
+  // Swap views
+  document.getElementById('view-overview').style.display = 'none';
+  const dv = document.getElementById('view-detail');
+  dv.style.display = 'flex';
+
+  // Header
+  const av = document.getElementById('d-avatar');
+  av.textContent = abbr;
+  av.style.color = cfg.color;
+  av.style.borderColor = cfg.color + '88';
+  av.style.background  = cfg.colorBg;
+  document.getElementById('d-name').textContent = cfg.label;
+  document.getElementById('d-sub').textContent  = cfg.sub;
+
+  // Stats
+  document.getElementById('d-stats').innerHTML = cfg.stats.map(function(s) {
+    const col = s.hi ? 'var(--accent)' : (s.warn ? 'var(--warn)' : 'var(--text)');
+    return `<div class="d-stat">
+      <div class="d-stat-label">${s.label}</div>
+      <div class="d-stat-value" style="color:${col};">${s.value}</div>
+      <div class="d-stat-sub">${s.sub}</div>
+    </div>`;
+  }).join('');
+
+  // Chart title + draw
+  document.getElementById('d-chart-title').textContent = cfg.chartTitle;
+  requestAnimationFrame(function() { drawChart(cfg.chart, cfg.color); });
+
+  // Audit table
+  document.getElementById('d-audit-title').textContent = cfg.auditTitle;
+  const verdictIdx = cfg.headers.length - 1;
+  let html = '<div class="audit-col">' +
+    cfg.headers.map(function(h) {
+      return `<span style="flex:1;" class="audit-th">${h}</span>`;
+    }).join('') + '</div>';
+  cfg.rows.forEach(function(row) {
+    html += '<div class="audit-col" style="background:var(--bg);">';
+    row.forEach(function(cell, ci) {
+      if (ci === verdictIdx) {
+        html += `<span style="flex:1;"><span class="verd v-${cell}">${cell}</span></span>`;
+      } else {
+        const color = ci === 0 ? 'var(--text)' : 'var(--muted)';
+        html += `<span style="flex:1;font-family:'JetBrains Mono',monospace;font-size:11px;color:${color};">${cell}</span>`;
+      }
+    });
+    html += '</div>';
+  });
+  document.getElementById('d-audit-body').innerHTML = html;
+
+  // Recommendations
+  document.getElementById('d-recs').innerHTML = cfg.recs.map(function(r) {
+    return `<div class="rec">
+      <div class="rec-title">${r.title}</div>
+      <div class="rec-desc">${r.desc}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
+        <span class="rec-saving">${r.saving}</span>
+        <button class="btn btn-primary btn-sm"
+                onclick="this.textContent='✓ Applied';this.disabled=true;this.style.opacity='.5';">Apply</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Feed
+  document.getElementById('d-feed').innerHTML = cfg.feed.map(function(f) {
+    return `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;
+                        color:var(--muted);padding:3px 0;
+                        border-bottom:1px solid var(--border);">${f}</div>`;
+  }).join('');
+}
+
+// ── Bar chart ──────────────────────────────────────────────────────────
+function drawChart(data, color) {
+  const canvas = document.getElementById('d-chart');
+  if (!canvas) return;
+  const W = canvas.parentElement.offsetWidth - 32;
+  if (W <= 0) return;
+  canvas.width  = W;
+  canvas.height = 56;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, 56);
+  const max = Math.max.apply(null, data);
+  const bw  = Math.floor(W / data.length) - 2;
+  data.forEach(function(val, i) {
+    const h    = Math.max(3, Math.floor((val / max) * 48));
+    const x    = i * (bw + 2);
+    const y    = 56 - h;
+    const last = i === data.length - 1;
+    ctx.fillStyle = last ? color : color + '3A';
+    ctx.fillRect(x, y, bw, h);
+    if (last) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, bw - 1, h - 1);
+    }
+  });
+}
+window.addEventListener('resize', function() {
+  if (activeAgent) drawChart(AGENTS[activeAgent].chart, AGENTS[activeAgent].color);
+});
+
+// ── Run agent ──────────────────────────────────────────────────────────
+function runDetailAgent() {
+  if (!activeAgent) return;
+  const btn = document.getElementById('d-run-btn');
+  const name = AGENTS[activeAgent].name;
+  btn.textContent = '⟳ Running…';
+  btn.disabled = true;
+  fetch('/dashboard/agents/' + name + '/run', { method:'POST' })
+    .then(function(r) { return r.text(); })
+    .then(function() {
+      btn.textContent = '✓ Done';
+      setTimeout(function() { btn.textContent = '▶ Run Now'; btn.disabled = false; }, 3000);
+    })
+    .catch(function() { btn.textContent = '▶ Run Now'; btn.disabled = false; });
+}
+
+// ── Tab switching ───────────────────────────────────────────────────────
+function switchTab(tab) {
+  var ana = document.getElementById('d-analytics-panel');
+  var cfg = document.getElementById('d-settings-panel');
+  var tA  = document.getElementById('tab-analytics');
+  var tS  = document.getElementById('tab-settings');
+  if (tab === 'analytics') {
+    ana.style.display = 'flex';
+    cfg.style.display = 'none';
+    tA.classList.add('active');
+    tS.classList.remove('active');
+  } else {
+    ana.style.display = 'none';
+    cfg.style.display = 'flex';
+    tA.classList.remove('active');
+    tS.classList.add('active');
+    renderSettings();
+  }
+}
+
+// ── Render settings panel ───────────────────────────────────────────────
+function renderSettings() {
+  if (!activeAgent) return;
+  const sCfg  = SETTINGS[activeAgent];
+  const vals  = settingVals[activeAgent];
+  const color = AGENTS[activeAgent].color;
+
+  // Help sidebar
+  document.getElementById('d-settings-help').textContent = sCfg.help;
+
+  // Build sections
+  let html = '';
+  sCfg.sections.forEach(function(sec, si) {
+    html += `<div class="s-section">
+      <div class="s-section-title">${sec.title}</div>`;
+
+    sec.items.forEach(function(item) {
+      const cur = vals[item.key];
+      html += '<div class="s-row">';
+
+      if (item.type === 'toggle') {
+        html += `<div class="s-label-wrap">
+          <div class="s-label">${item.label}</div>
+          <div class="s-desc">${item.desc}</div>
+        </div>
+        <div class="s-control">
+          <label class="toggle" title="${item.label}">
+            <input type="checkbox" id="s-${activeAgent}-${item.key}"
+              ${cur ? 'checked' : ''}
+              onchange="saveVal('${item.key}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>`;
+
+      } else if (item.type === 'range') {
+        const dispVal = cur + (item.unit || '');
+        html += `<div class="s-label-wrap" style="flex:1;">
+          <div class="s-label">${item.label}</div>
+          <div class="s-desc">${item.desc}</div>
+          <div class="s-range-wrap">
+            <input type="range" class="s-range"
+              id="s-${activeAgent}-${item.key}"
+              min="${item.min}" max="${item.max}" step="${item.step}" value="${cur}"
+              style="accent-color:${color};"
+              oninput="document.getElementById('sv-${activeAgent}-${item.key}').textContent=this.value+'${item.unit||''}';saveVal('${item.key}',+this.value)">
+            <span class="s-range-val" id="sv-${activeAgent}-${item.key}">${dispVal}</span>
+          </div>
+        </div>`;
+
+      } else if (item.type === 'number') {
+        html += `<div class="s-label-wrap">
+          <div class="s-label">${item.label}</div>
+          <div class="s-desc">${item.desc}</div>
+        </div>
+        <div class="s-control">
+          <div class="s-stepper">
+            <button type="button"
+              onclick="stepNum('${item.key}',${item.min},${item.max},${item.step},-1)">−</button>
+            <input type="number" id="s-${activeAgent}-${item.key}"
+              value="${cur}" min="${item.min}" max="${item.max}" step="${item.step}"
+              onchange="saveVal('${item.key}',+this.value)">
+            <button type="button"
+              onclick="stepNum('${item.key}',${item.min},${item.max},${item.step},1)">+</button>
+          </div>
+        </div>`;
+
+      } else if (item.type === 'select') {
+        html += `<div class="s-label-wrap">
+          <div class="s-label">${item.label}</div>
+          <div class="s-desc">${item.desc}</div>
+        </div>
+        <div class="s-control">
+          <select class="s-select" id="s-${activeAgent}-${item.key}"
+            onchange="saveVal('${item.key}',this.value)">
+            ${item.opts.map(function(o) {
+              return `<option value="${o}" ${o===cur?'selected':''}>${o}</option>`;
+            }).join('')}
+          </select>
+        </div>`;
+      }
+      html += '</div>'; // /s-row
+    });
+
+    // Save row per section
+    html += `<div class="s-save-row">
+      <span style="font-size:10px;color:var(--dim);" id="s-saved-${si}">Unsaved changes</span>
+      <button class="btn btn-primary btn-sm"
+              onclick="saveSection(${si},'s-saved-${si}')">Save changes</button>
+    </div>`;
+    html += '</div>'; // /s-section
+  });
+
+  document.getElementById('d-settings-body').innerHTML = html;
+  // Mark sections as saved initially
+  sCfg.sections.forEach(function(_, si) {
+    var el = document.getElementById('s-saved-' + si);
+    if (el) el.textContent = 'All changes saved';
+  });
+}
+
+function saveVal(key, val) {
+  if (!activeAgent) return;
+  settingVals[activeAgent][key] = val;
+  // Mark all section save rows as having unsaved changes
+  SETTINGS[activeAgent].sections.forEach(function(sec, si) {
+    if (sec.items.some(function(i) { return i.key === key; })) {
+      var el = document.getElementById('s-saved-' + si);
+      if (el) { el.textContent = 'Unsaved changes'; el.style.color = 'var(--warn)'; }
+    }
+  });
+}
+
+function stepNum(key, min, max, step, dir) {
+  if (!activeAgent) return;
+  var inp = document.getElementById('s-' + activeAgent + '-' + key);
+  if (!inp) return;
+  var newVal = Math.min(max, Math.max(min, (+inp.value) + dir * step));
+  inp.value = newVal;
+  saveVal(key, newVal);
+}
+
+function saveSection(si, savedId) {
+  var el = document.getElementById(savedId);
+  if (el) { el.textContent = '✓ Saved'; el.style.color = 'var(--accent)'; }
+  setTimeout(function() {
+    if (el) { el.textContent = 'All changes saved'; el.style.color = 'var(--dim)'; }
+  }, 2200);
+}
+
+function resetSettings() {
+  if (!activeAgent) return;
+  SETTINGS[activeAgent].sections.forEach(function(sec) {
+    sec.items.forEach(function(item) {
+      settingVals[activeAgent][item.key] = item.val;
+    });
+  });
+  renderSettings();
+}
+</script>
+{% endblock %}

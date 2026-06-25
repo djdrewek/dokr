@@ -1,0 +1,49 @@
+{% for stage in stages %}
+<div style="display:flex;align-items:flex-start;gap:16px;padding:12px 0;
+            border-bottom:1px solid var(--border);">
+
+  {# Toggle button or locked badge #}
+  {% if stage.skippable %}
+  <div id="stage-toggle-{{ stage.key }}" style="display:flex;align-items:center;gap:10px;min-width:180px;">
+    {% if stage.enabled %}
+    <button class="btn btn-sm"
+            style="min-width:52px;color:var(--accent);background:var(--accent-dim);
+                   border:1px solid var(--accent);font-weight:600;"
+            hx-post="/dashboard/setup/pipeline/toggle"
+            hx-vals='{"stage":"{{ stage.key }}","enabled":"0"}'
+            hx-target="#stage-toggle-{{ stage.key }}" hx-swap="outerHTML">
+      ON
+    </button>
+    <span class="fs-11 text-dim">{{ stage.label }} is active.</span>
+    {% else %}
+    <button class="btn btn-sm"
+            style="min-width:52px;color:var(--muted);background:var(--surface-2);
+                   border:1px solid var(--border);font-weight:600;"
+            hx-post="/dashboard/setup/pipeline/toggle"
+            hx-vals='{"stage":"{{ stage.key }}","enabled":"1"}'
+            hx-target="#stage-toggle-{{ stage.key }}" hx-swap="outerHTML">
+      OFF
+    </button>
+    <span class="fs-11 text-dim">{{ stage.label }} is disabled — pipeline will skip this stage.</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <div style="min-width:180px;display:flex;align-items:center;gap:10px;">
+    <span style="min-width:52px;display:inline-flex;align-items:center;justify-content:center;
+                 padding:4px 10px;font-size:11px;font-weight:600;letter-spacing:.04em;
+                 color:var(--muted);background:var(--surface-2);border:1px solid var(--border);
+                 border-radius:4px;">REQUIRED</span>
+    <span class="fs-11 text-dim">Cannot be disabled.</span>
+  </div>
+  {% endif %}
+
+  {# Stage info #}
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:13px;font-weight:600;color:var(--text-1);margin-bottom:2px;">
+      {{ stage.label }}
+    </div>
+    <div class="fs-11 text-dim" style="line-height:1.5;">{{ stage.description }}</div>
+  </div>
+
+</div>
+{% endfor %}

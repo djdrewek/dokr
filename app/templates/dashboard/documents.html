@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}Documents{% endblock %}
+
+{% block extra_styles %}
+.doc-split {
+  display: flex;
+  height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+/* ── Left list ──────────────────────────────────────────────── */
+.doc-list {
+  width: 280px;
+  flex: none;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+.doc-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--nav-bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.doc-list-header-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.parent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.parent-row:hover { background: var(--surface-1); }
+.parent-row.selected { background: var(--accent-dim); }
+.variant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 34px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  background: var(--surface-1);
+  transition: background 0.1s;
+}
+.variant-row:hover { background: rgba(0,201,122,0.04); }
+.variant-row.selected { background: var(--accent-dim); }
+
+/* ── Right panel ─────────────────────────────────────────────── */
+.doc-panel {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg);
+}
+.doc-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 10px;
+  color: var(--dim);
+}
+
+/* ── Stage chips ─────────────────────────────────────────────── */
+.stage-zero     { background: #1A2520; color: var(--muted); }
+.stage-learning { background: #2B1D0A; color: var(--warn); }
+.stage-learned  { background: var(--accent-dim); color: var(--accent); }
+.stage-opt      { background: #161B3A; color: var(--purple); }
+html[data-theme="light"] .stage-zero     { background: #E6EFEA; color: var(--muted); }
+html[data-theme="light"] .stage-learning { background: #FEF3E2; color: var(--warn); }
+html[data-theme="light"] .stage-learned  { background: var(--accent-dim); color: var(--accent); }
+html[data-theme="light"] .stage-opt      { background: #ECEEFF; color: var(--purple); }
+
+.expand-chevron {
+  font-size: 9px;
+  color: var(--dim);
+  flex: none;
+  width: 12px;
+  text-align: center;
+  transition: transform 0.15s;
+}
+.expand-chevron.open { transform: rotate(90deg); }
+{% endblock %}
+
+{% block content %}
+<div class="doc-split">
+
+  {# ── LEFT: document type list ──────────────────────────────── #}
+  <div class="doc-list">
+    <div class="doc-list-header">
+      <span class="doc-list-header-label">{{ doc_types|length }} document types</span>
+    </div>
+
+    {% for dt in doc_types %}
+    <div id="parent-block-{{ dt.id }}">
+
+      {# Parent row — click selects class panel, chevron expands variants #}
+      <div class="parent-row {% if loop.first %}selected{% endif %}"
+           id="parent-row-{{ dt.id }}"
+           hx-get="/dashboard/documents/class/{{ dt.id }}/panel"
+           hx-target="#doc-panel"
+           hx-swap="innerHTML"
+           hx-indicator="#panel-spinner"
+           onclick="selectRow('parent-{{ dt.id }}')"
+           style="position:relative;">
+
+        <span class="expand-chevron {% if loop.first %}open{% endif %}"
+              id="chevron-{{ dt.id }}"
+              onclick="event.stopPropagation(); toggleVariants('{{ dt.id }}')"
+              title="Expand variants">▶</span>
+
+        <div style="flex:1;min-width:0">
+          <div class="truncate" style="font-size:13px;font-weight:500;color:var(--text);">
+            {{ dt.name }}
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:1px;">
+            {{ dt.total_docs }} docs
+            &middot; {{ dt.variant_count }} variant{{ dt.variant_count != 1 and 's' or '' }}
+          </div>
+        </div>
+
+        <div style="flex:none;text-align:right">
+          <span class="chip mono
+            {% if dt.best_stage == 'OPTIMISED' %}stage-opt
+            {% elif dt.best_stage in ('LEARNED','LEARNED_PROPOSED') %}stage-learned
+            {% elif dt.best_stage == 'LEARNING' %}stage-learning
+            {% else %}stage-zero{% endif %}"
+            style="font-size:9px;padding:2px 5px;">
+            {{ dt.best_stage }}
+          </span>
+        </div>
+      </div>
+
+      {# Variant sub-rows — hidden by default, toggleable #}
+      <div id="variants-{{ dt.id }}" style="{% if not loop.first %}display:none;{% endif %}">
+        {% for v in dt.variants %}
+        <div class="variant-row"
+             id="variant-row-{{ v.id }}"
+             hx-get="/dashboard/documents/variant/{{ v.id }}/panel"
+             hx-target="#doc-panel"
+             hx-swap="innerHTML"
+             hx-indicator="#panel-spinner"
+             onclick="selectRow('variant-{{ v.id }}')">
+
+          <span style="font-size:11px;color:var(--dim);flex:none;">└</span>
+          <div style="flex:1;min-width:0">
+            <div class="truncate" style="font-size:12px;color:var(--text);">
+              {{ v.label }}
+            </div>
+            <div style="font-size:10px;color:var(--dim);margin-top:1px;">
+              {{ v.doc_count }} docs &middot; {{ v.field_count }} fields
+            </div>
+          </div>
+
+          <span class="chip mono
+            {% if v.learning_stage == 'OPTIMISED' %}stage-opt
+            {% elif v.learning_stage in ('LEARNED','LEARNED_PROPOSED') %}stage-learned
+            {% elif v.learning_stage == 'LEARNING' %}stage-learning
+            {% else %}stage-zero{% endif %}"
+            style="font-size:9px;padding:2px 5px;flex:none;">
+            {{ v.learning_stage }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+
+    </div>
+    {% else %}
+    <div style="padding:32px 16px;text-align:center;color:var(--dim);font-size:12px;">
+      No document types yet.<br>
+      Upload documents via Ingest to get started.
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── RIGHT: detail panel ──────────────────────────────────── #}
+  <div class="doc-panel" id="doc-panel">
+    {% if doc_types %}
+      {# Load first class panel on page load via HTMX trigger #}
+      <div hx-get="/dashboard/documents/class/{{ doc_types[0].id }}/panel"
+           hx-target="#doc-panel"
+           hx-swap="innerHTML"
+           hx-trigger="load">
+        <div class="doc-panel-empty">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    {% else %}
+      <div class="doc-panel-empty">
+        <div style="font-size:32px;color:var(--border-2);">⬡</div>
+        <div style="font-size:13px;">No document types discovered yet</div>
+        <div style="font-size:11px;color:var(--dim);">Upload documents via Ingest to start learning</div>
+        <a href="/dashboard/ingest" class="btn btn-secondary btn-sm" style="margin-top:8px;">Go to Ingest →</a>
+      </div>
+    {% endif %}
+    <span id="panel-spinner" class="htmx-indicator spinner" style="position:fixed;bottom:20px;right:24px;"></span>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function selectRow(key) {
+  document.querySelectorAll('.parent-row, .variant-row').forEach(r => r.classList.remove('selected'));
+  const prefix = key.startsWith('variant-') ? 'variant-row-' : 'parent-row-';
+  const id     = key.startsWith('variant-') ? key.slice(8) : key.slice(7);
+  const el     = document.getElementById(prefix + id);
+  if (el) el.classList.add('selected');
+}
+
+function toggleVariants(dcId) {
+  const wrap    = document.getElementById('variants-' + dcId);
+  const chevron = document.getElementById('chevron-' + dcId);
+  if (!wrap) return;
+  const isOpen = wrap.style.display !== 'none';
+  wrap.style.display = isOpen ? 'none' : 'block';
+  chevron.classList.toggle('open', !isOpen);
+}
+
+// Auto-select the first parent row
+document.addEventListener('DOMContentLoaded', () => {
+  const first = document.querySelector('.parent-row');
+  if (first) first.classList.add('selected');
+});
+</script>
+{% endblock %}

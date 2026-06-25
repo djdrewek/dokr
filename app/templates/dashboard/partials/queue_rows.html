@@ -1,0 +1,42 @@
+<div class="table-wrap">
+  <div class="table-header">
+    <span class="col-head" style="flex:0.6;min-width:70px;">Class</span>
+    <span class="col-head" style="flex:2.4">File</span>
+    <span class="col-head" style="flex:1.4">Status</span>
+    <span class="col-head" style="flex:0.8">Conf</span>
+    <span class="col-head" style="flex:0.5;text-align:right;">Fields</span>
+    <span class="col-head" style="flex:0.8">Submitted</span>
+    <span class="col-head" style="flex:0.5;text-align:right;">ID</span>
+  </div>
+
+  {% if rows %}
+    {% for d in rows %}
+    <div class="table-row" id="{{ d.id }}">
+      <span class="mono text-muted" style="flex:0.6;min-width:70px;font-size:11px;">{{ d.document_class }}</span>
+      <span class="truncate" style="flex:2.4;font-size:12px;color:var(--text);" title="{{ d.file_name }}">{{ d.file_name }}</span>
+      <span style="flex:1.4;">
+        <span class="badge" style="color:{{ d.status_color }};background:{{ d.status_bg }};">
+          {{ d.status | replace('CANDIDATE_NEW_CLASS','NEW TYPE') | replace('_', ' ') }}
+        </span>
+      </span>
+      <span style="flex:0.8;display:flex;align-items:center;gap:6px;">
+        <div class="conf-bar-wrap">
+          <div class="conf-bar" style="width:{{ d.conf_pct }}%;"></div>
+        </div>
+        <span class="mono text-muted" style="font-size:10px;white-space:nowrap;">{{ d.confidence }}</span>
+      </span>
+      <span class="mono text-muted" style="flex:0.5;text-align:right;font-size:11px;">{{ d.n_fields }}</span>
+      <span class="mono text-dim" style="flex:0.8;font-size:11px;">{{ d.created_at }}</span>
+      <span class="mono text-dim" style="flex:0.5;text-align:right;font-size:10px;">{{ d.id[-8:] }}</span>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="table-empty">
+      {% if total == 0 %}No documents yet — <a href="/dashboard/ingest" style="color:var(--accent);">ingest one</a>{% else %}No documents match this filter{% endif %}
+    </div>
+  {% endif %}
+</div>
+<div class="mono fs-11 text-dim mt-8" style="text-align:right;">
+  {{ total }} total · auto-refreshing
+  <span class="htmx-indicator spinner" style="margin-left:6px;"></span>
+</div>

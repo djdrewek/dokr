@@ -1,0 +1,26 @@
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total submitted</div>
+    <div class="stat-value">{{ stats.total }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Completed</div>
+    <div class="stat-value accent">{{ stats.completed }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Needs review</div>
+    <div class="stat-value {% if stats.review > 0 %}warn{% endif %}">{{ stats.review }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">New types</div>
+    <div class="stat-value {% if stats.discovery > 0 %}purple{% endif %}">{{ stats.discovery }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Processing</div>
+    <div class="stat-value">{{ stats.processing }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Failed</div>
+    <div class="stat-value {% if stats.failed > 0 %}danger{% endif %}">{{ stats.failed }}</div>
+  </div>
+</div>

@@ -1,0 +1,117 @@
+{% if rows %}
+  {% for d in rows %}
+  <div class="expandable" id="review-{{ d.id }}">
+
+    <!-- Summary row — click to expand -->
+    <div class="table-row expand-trigger" style="cursor:pointer;padding:14px 16px;">
+      <span class="expand-icon text-muted" style="flex:none;width:20px;font-size:10px;user-select:none;">▼</span>
+      <span class="truncate" style="flex:2.4;font-size:12px;color:var(--text);" title="{{ d.file_name }}">{{ d.file_name }}</span>
+      <span style="flex:1;display:flex;gap:6px;align-items:center;">
+        <span class="badge" style="color:var(--warn);background:#2B1D0A;">NEEDS REVIEW</span>
+      </span>
+      <span class="mono text-muted" style="flex:0.8;font-size:11px;">{{ d.document_class }}</span>
+      <span class="mono text-muted" style="flex:0.6;font-size:11px;">{{ d.confidence }}</span>
+      <span class="mono text-muted" style="flex:0.5;font-size:11px;">{{ d.n_fields }} fields</span>
+      <span class="mono text-dim" style="flex:0.8;font-size:11px;">{{ d.updated_at }}</span>
+      <a href="/dashboard/docs/{{ d.id }}" class="btn btn-secondary btn-sm" style="flex:none;" onclick="event.stopPropagation();">View →</a>
+    </div>
+
+    <!-- Expanded detail -->
+    <div class="expand-content">
+      <div class="grid-2" style="gap:20px;">
+
+        <!-- Left: NIGO conditions + governance -->
+        <div>
+          {% if d.nigo %}
+          <div class="panel-title">NIGO conditions</div>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
+            {% for cond in d.nigo %}
+            <div style="display:flex;align-items:flex-start;gap:8px;">
+              <span style="color:var(--warn);flex:none;margin-top:1px;">▸</span>
+              <span style="font-size:12px;color:var(--text);">{{ cond }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if d.gov_verdict %}
+          <div class="panel-title" style="margin-top:12px;">Governance verdict</div>
+          <div class="flex gap-8 items-center" style="margin-bottom:6px;">
+            <span class="chip" style="
+              {% if d.gov_verdict == 'CORRECT' %}color:var(--accent);background:#0D2B1A;
+              {% elif d.gov_verdict == 'WRONG_CLASS' %}color:var(--warn);background:#2B1D0A;
+              {% else %}color:var(--purple);background:#161B3A;{% endif %}">
+              {{ d.gov_verdict }}
+            </span>
+          </div>
+          <div class="fs-12 text-muted">{{ d.gov_reasoning }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Right: actions -->
+        <div>
+          <div class="panel-title">Actions</div>
+
+          <!-- Approve form -->
+          <form hx-post="/dashboard/review/{{ d.id }}/approve"
+                hx-target="#toast-container"
+                hx-swap="beforeend"
+                hx-on::after-request="htmx.find('#review-{{ d.id }}').remove()"
+                style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+            <div class="field-group">
+              <label class="field-label">Re-queue to stage</label>
+              <select name="target_stage" class="field-select" style="width:100%;">
+                <option value="VALIDATING">VALIDATING (re-run business rules)</option>
+                <option value="EXTRACTING">EXTRACTING (retry extraction)</option>
+                <option value="MATCHING">MATCHING (skip to match check)</option>
+                <option value="POSTING">POSTING (force ERP post)</option>
+                <option value="COMPLETED">COMPLETED (accept as-is)</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Approved by</label>
+              <input type="text" name="approved_by" value="ops@dokr.local" class="field-input">
+            </div>
+            <div class="field-group">
+              <label class="field-label">Note (optional)</label>
+              <input type="text" name="note" placeholder="Reason for approval…" class="field-input">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-start;">
+              ✓ Approve &amp; re-queue
+            </button>
+          </form>
+
+          <div class="divider" style="margin:12px 0;"></div>
+
+          <!-- Reject form -->
+          <form hx-post="/dashboard/review/{{ d.id }}/reject"
+                hx-target="#toast-container"
+                hx-swap="beforeend"
+                hx-on::after-request="htmx.find('#review-{{ d.id }}').remove()"
+                style="display:flex;flex-direction:column;gap:10px;">
+            <div class="field-group">
+              <label class="field-label">Rejection reason</label>
+              <input type="text" name="reason" placeholder="e.g. Duplicate, wrong supplier…" class="field-input" required>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Rejected by</label>
+              <input type="text" name="rejected_by" value="ops@dokr.local" class="field-input">
+            </div>
+            <button type="submit" class="btn btn-danger btn-sm" style="align-self:flex-start;">
+              ✕ Reject
+            </button>
+          </form>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+  {% endfor %}
+
+{% else %}
+  <div style="padding:60px;text-align:center;">
+    <div class="mono fs-12 text-dim">No documents in NEEDS_REVIEW</div>
+    <div class="fs-12 text-muted mt-8">All clear ✓</div>
+  </div>
+{% endif %}

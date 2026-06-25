@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Queue{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <div class="page-header flex items-center gap-16">
+    <div class="flex-1">
+      <div class="page-title">Document queue</div>
+      <div class="page-subtitle">{{ total }} document{% if total != 1 %}s{% endif %} total</div>
+    </div>
+
+    <!-- Status filter -->
+    <form method="get" action="/dashboard/queue" style="display:flex;gap:8px;align-items:center;">
+      <select name="status" class="field-select" style="width:180px;"
+              onchange="this.form.submit()">
+        {% for s in statuses %}
+        <option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="page" value="1">
+    </form>
+
+    <a href="/dashboard/ingest" class="btn btn-primary btn-sm">+ Ingest</a>
+  </div>
+
+  <!-- Table — auto-refresh every 6s -->
+  <div id="queue-table"
+       hx-get="/dashboard/partials/queue-rows?status={{ status_filter }}&page={{ current_page }}"
+       hx-trigger="every 6s"
+       hx-swap="innerHTML">
+    {% include "dashboard/partials/queue_rows.html" %}
+  </div>
+
+  <!-- Pagination -->
+  {% if pages > 1 %}
+  <div class="flex gap-8 mt-16" style="justify-content:flex-end;">
+    {% if current_page > 1 %}
+    <a href="/dashboard/queue?status={{ status_filter }}&page={{ current_page - 1 }}"
+       class="btn btn-secondary btn-sm">← Prev</a>
+    {% endif %}
+    <span class="mono fs-12 text-muted" style="display:flex;align-items:center;padding:0 8px;">
+      {{ current_page }} / {{ pages }}
+    </span>
+    {% if current_page < pages %}
+    <a href="/dashboard/queue?status={{ status_filter }}&page={{ current_page + 1 }}"
+       class="btn btn-secondary btn-sm">Next →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

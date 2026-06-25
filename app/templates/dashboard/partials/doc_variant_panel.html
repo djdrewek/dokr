@@ -1,0 +1,512 @@
+{#
+  Partial: doc_variant_panel.html
+  Right-panel for a selected document variant.
+  Shows: editable canonical field names with alias badges, coverage heatmap, recent uploads.
+  Swapped into #doc-panel.
+#}
+
+{# ── Header ──────────────────────────────────────────────────────── #}
+<div style="border-bottom:1px solid var(--border);padding:16px 20px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:10;background:var(--nav-bg);">
+  <div>
+    <div style="font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.01em;">
+      {{ variant.variant_label or variant.issuer_slug or variant.variant_key or "Unnamed variant" }}
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:3px;">
+      Variant of <strong style="color:var(--text)">{{ dc.name if dc else variant.document_class_id }}</strong>
+      &middot; {{ variant.doc_count or 0 }} docs
+      &middot; {{ fields|length }} confirmed fields
+    </div>
+  </div>
+  <div style="flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+    <span class="chip mono
+      {% if variant.learning_stage == 'OPTIMISED' %}stage-opt
+      {% elif variant.learning_stage in ('LEARNED','LEARNED_PROPOSED') %}stage-learned
+      {% elif variant.learning_stage == 'LEARNING' %}stage-learning
+      {% else %}stage-zero{% endif %}"
+      style="font-size:10px;">
+      {{ variant.learning_stage }}
+    </span>
+
+    {# Format analysis button + last-run indicator #}
+    <div style="display:flex;align-items:center;gap:5px;">
+      {% if format_ran_at %}
+      <span style="font-size:9px;color:var(--dim);white-space:nowrap;" title="Format analysis last ran {{ format_ran_at }}">
+        🎯 {{ format_ran_at }}
+      </span>
+      {% endif %}
+      <button class="btn btn-sm"
+              style="background:transparent;border:1px solid var(--accent);color:var(--accent);opacity:0.85;white-space:nowrap;"
+              hx-post="/dashboard/setup/variants/{{ variant.id }}/run-format-agent"
+              hx-target="#toast-container"
+              hx-swap="beforeend"
+              hx-indicator="#fmt-spin-{{ variant.id }}"
+              title="Analyse extracted values and auto-set format types + extraction hints">
+        <span id="fmt-spin-{{ variant.id }}" class="htmx-indicator" style="display:none;">⟳ </span>
+        🎯 Format analysis
+      </button>
+    </div>
+
+    <button class="btn btn-sm"
+            style="background:transparent;border:1px solid var(--danger);color:var(--danger);opacity:0.75;"
+            hx-post="/dashboard/documents/variant/{{ variant.id }}/reset"
+            hx-target="#toast-container"
+            hx-swap="beforeend"
+            hx-confirm="Delete all documents for this variant and clear its schema? Cannot be undone."
+            title="Reset this variant — wipe docs + schema, re-learn from scratch">
+      ↺ Reset
+    </button>
+    <label class="btn btn-secondary btn-sm" style="cursor:pointer;display:flex;align-items:center;gap:6px;">
+      ↑ Upload example
+      <input type="file" accept=".pdf" name="file"
+             hx-post="/dashboard/documents/ingest/{{ variant.document_class_id }}"
+             hx-target="#toast-container"
+             hx-swap="beforeend"
+             hx-encoding="multipart/form-data"
+             style="display:none;">
+    </label>
+  </div>
+</div>
+
+{# ── Progress bar ─────────────────────────────────────────────────── #}
+<div style="padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface-2);">
+  <div style="display:flex;align-items:center;gap:0;height:3px;background:var(--border-2);margin-bottom:6px;">
+    {% set stage_pct = {
+        'ZERO_SHOT': 8,
+        'LEARNING': 35,
+        'LEARNED_PROPOSED': 55,
+        'LEARNED': 80,
+        'OPTIMISED': 100
+    } %}
+    {% set pct = stage_pct.get(variant.learning_stage, 8) %}
+    <div style="height:100%;width:{{ pct }}%;background:
+      {% if variant.learning_stage == 'OPTIMISED' %}var(--purple)
+      {% elif variant.learning_stage in ('LEARNED','LEARNED_PROPOSED') %}var(--accent)
+      {% elif variant.learning_stage == 'LEARNING' %}var(--warn)
+      {% else %}var(--dim){% endif %};
+      transition:width 0.3s;"></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;">
+    {% for s in ['ZERO_SHOT','LEARNING','LEARNED','OPTIMISED'] %}
+    <span style="font-size:9px;color:{% if variant.learning_stage == s %}var(--text){% else %}var(--dim){% endif %};font-family:'JetBrains Mono',monospace;">
+      {{ s }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Tabs ─────────────────────────────────────────────────────────── #}
+<div style="display:flex;border-bottom:1px solid var(--border);background:var(--surface-2);gap:0;">
+  {% for tab_id, tab_label in [
+      ('fields',   'Fields (' ~ fields|length ~ ')'),
+      ('coverage', 'Coverage'),
+      ('recent',   'Recent (' ~ recent|length ~ ')'),
+  ] %}
+  <button id="tab-{{ tab_id }}-btn"
+          onclick="switchTab('{{ tab_id }}')"
+          style="background:transparent;border:none;border-bottom:2px solid {% if loop.first %}var(--accent){% else %}transparent{% endif %};
+                 color:{% if loop.first %}var(--text){% else %}var(--muted){% endif %};
+                 font-size:12px;padding:0 18px;height:38px;cursor:pointer;
+                 font-family:inherit;transition:color 0.15s,border-color 0.15s;white-space:nowrap;"
+          onmouseover="if(!this.dataset.active)this.style.color='var(--text)'"
+          onmouseout="if(!this.dataset.active)this.style.color='var(--muted)'"
+          data-active="{% if loop.first %}1{% endif %}">
+    {{ tab_label }}
+  </button>
+  {% endfor %}
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════════
+   TAB 1 — FIELDS
+   Editable canonical names + alias badges from raw field names seen on documents.
+   ══════════════════════════════════════════════════════════════════════════════ #}
+<div id="tab-fields" style="padding:0;">
+
+  {% if fields %}
+  <form hx-post="/dashboard/documents/variant/{{ variant.id }}/schema"
+        hx-target="#toast-container"
+        hx-swap="beforeend">
+
+    {# Column headers #}
+    <div style="display:grid;grid-template-columns:20px 1fr 200px 52px 28px;gap:8px;
+                padding:8px 20px 6px;border-bottom:1px solid var(--border);
+                background:var(--surface-2);">
+      <span></span>
+      <span style="font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">
+        API field name <span style="font-weight:400;opacity:.7;">(what your ERP receives — click to rename)</span>
+      </span>
+      <span style="font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">
+        Raw names seen on documents
+      </span>
+      <span style="font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;text-align:right;">
+        Conf
+      </span>
+      <span></span>
+    </div>
+
+    {% for f in fields %}
+    <div style="display:grid;grid-template-columns:20px 1fr 200px 52px 28px;gap:8px;
+                align-items:center;padding:7px 20px;
+                border-bottom:1px solid var(--border);
+                background:{% if loop.index is odd %}var(--surface-2){% else %}var(--bg){% endif %};">
+
+      {# Checkbox — include this field in schema #}
+      <input type="checkbox" name="checked_{{ f.canonical }}" value="on" checked
+             style="width:13px;height:13px;cursor:pointer;accent-color:var(--accent);">
+
+      {# Editable canonical name #}
+      <div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="text"
+                 name="canonical_{{ f.canonical }}"
+                 value="{{ f.canonical }}"
+                 class="field-input"
+                 style="padding:4px 8px;font-size:12px;font-family:'JetBrains Mono',monospace;
+                        background:transparent;border-color:transparent;flex:1;min-width:0;"
+                 onfocus="this.style.borderColor='var(--accent)';this.style.background='var(--surface-1)'"
+                 onblur="this.style.borderColor='transparent';this.style.background='transparent'"
+                 title="Rename this field — changes what the API returns">
+          {% if f.format_type %}
+          {% set _ft_colors = {
+            'integer':      '#4f8ef7',
+            'decimal':      '#4f8ef7',
+            'currency_amt': '#2eb885',
+            'currency_code':'#2eb885',
+            'date':         '#e6a817',
+            'datetime':     '#e6a817',
+            'code':         '#9b59b6',
+            'incoterm':     '#e74c3c',
+            'country_code': '#1abc9c',
+            'percentage':   '#f39c12',
+            'boolean':      '#95a5a6',
+            'enum':         '#7f8c8d',
+            'name':         '#3498db',
+            'text':         '#bdc3c7',
+          } %}
+          {% set _ft_color = _ft_colors.get(f.format_type, '#bdc3c7') %}
+          <span style="flex:none;background:{{ _ft_color }}22;color:{{ _ft_color }};
+                       border:1px solid {{ _ft_color }}55;
+                       font-size:9px;font-weight:600;padding:1px 5px;
+                       white-space:nowrap;letter-spacing:0.04em;"
+                title="Format type: {{ f.format_type }}">
+            {{ f.format_type }}
+          </span>
+          {% endif %}
+        </div>
+        {% if f.format_hint %}
+        <div style="font-size:9px;color:var(--accent);margin-top:2px;padding-left:8px;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.8;"
+             title="Extraction hint: {{ f.format_hint }}">
+          ↳ {{ f.format_hint[:70] }}{% if f.format_hint|length > 70 %}…{% endif %}
+        </div>
+        {% elif f.example %}
+        <div style="font-size:10px;color:var(--dim);margin-top:2px;padding-left:8px;font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+             title="{{ f.example }}">
+          e.g. {{ f.example[:60] }}{% if f.example|length > 60 %}…{% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      {# Raw alias badges — editable: × to remove, type + Enter/comma to add #}
+      <div id="alias-wrap-{{ f.canonical }}"
+           style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;">
+
+        {# Hidden input: comma-joined alias list submitted with the form #}
+        <input type="hidden"
+               id="aliases-input-{{ f.canonical }}"
+               name="aliases_{{ f.canonical }}"
+               value="{{ f.aliases | join(',') }}">
+
+        {% for alias in f.aliases %}
+        <span class="alias-badge"
+              data-canonical="{{ f.canonical }}"
+              data-alias="{{ alias }}"
+              style="display:inline-flex;align-items:center;gap:2px;
+                     font-size:10px;font-family:'JetBrains Mono',monospace;
+                     background:var(--surface-1);border:1px solid var(--border-2);
+                     color:{% if alias == f.canonical %}var(--muted){% else %}var(--dim){% endif %};
+                     padding:1px 4px 1px 5px;">
+          {{ alias }}
+          <button type="button"
+                  onclick="removeAlias('{{ f.canonical }}', '{{ alias }}')"
+                  style="background:transparent;border:none;color:var(--dim);cursor:pointer;
+                         font-size:11px;line-height:1;padding:0;margin:0;opacity:0.6;"
+                  title="Remove alias">×</button>
+        </span>
+        {% endfor %}
+
+        {# Inline add-alias input — press Enter or comma to confirm #}
+        <input type="text"
+               placeholder="+ alias"
+               onkeydown="addAliasOnKey(event, '{{ f.canonical }}')"
+               style="font-size:10px;font-family:'JetBrains Mono',monospace;
+                      background:transparent;border:1px dashed var(--border-2);
+                      color:var(--muted);padding:1px 5px;width:64px;outline:none;"
+               onfocus="this.style.borderColor='var(--accent)';this.style.color='var(--text)'"
+               onblur="this.style.borderColor='var(--border-2)';this.style.color='var(--muted)'">
+      </div>
+
+      {# Confidence #}
+      <div style="text-align:right;">
+        <span class="mono fs-11" style="color:
+          {% if f.confidence >= 85 %}var(--accent)
+          {% elif f.confidence >= 65 %}var(--warn)
+          {% else %}var(--danger){% endif %};">
+          {{ f.confidence }}%
+        </span>
+        <div class="conf-bar-wrap" style="margin-top:3px;max-width:none;">
+          <div class="conf-bar" style="width:{{ f.confidence }}%;background:
+            {% if f.confidence >= 85 %}var(--accent)
+            {% elif f.confidence >= 65 %}var(--warn)
+            {% else %}var(--danger){% endif %};"></div>
+        </div>
+      </div>
+
+      {# Remove field #}
+      <button type="button"
+              onclick="this.closest('div[style*=grid]').style.opacity='0.3'; this.closest('div[style*=grid]').querySelector('input[type=checkbox]').checked=false;"
+              style="background:transparent;border:none;color:var(--dim);font-size:14px;cursor:pointer;padding:0;"
+              title="Remove from schema">✕</button>
+    </div>
+    {% endfor %}
+
+    {% if is_proposed %}
+    <div style="padding:10px 20px;border-top:1px solid var(--warn);background:#2B1D0A;
+                display:flex;align-items:center;gap:10px;">
+      <span style="font-size:16px;flex:none;">⚠</span>
+      <span style="font-size:11px;color:var(--warn);line-height:1.5;flex:1;">
+        <strong>Proposed schema</strong> — these fields were discovered automatically from your documents but haven't been confirmed yet.
+        Review the field names, uncheck any you don't need, then click <strong>Save schema</strong>.
+      </span>
+    </div>
+    {% endif %}
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;background:var(--surface-2);">
+      <button type="submit" class="btn btn-primary btn-sm">
+        ✓ Save schema
+      </button>
+      <span style="font-size:11px;color:var(--dim);">
+        {% if is_proposed %}
+        Saving confirms this schema and locks it for all future documents matched to this variant.
+        {% else %}
+        Changes apply to all future documents matched to this variant.
+        Renaming a field updates the API output name but keeps old aliases for matching.
+        {% endif %}
+      </span>
+    </div>
+  </form>
+
+  {% else %}
+  {# No extracted fields at all — truly empty variant #}
+  <div style="padding:32px 24px;text-align:center;color:var(--dim);">
+    <div style="font-size:28px;margin-bottom:12px;">🔍</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:6px;">No fields extracted yet for this variant</div>
+    <div style="font-size:11px;line-height:1.7;max-width:380px;margin:0 auto 16px;">
+      Upload an example document — Dokr will automatically discover and propose a schema
+      from what the AI extracts. You can then review and save it here.
+    </div>
+    <a href="/dashboard/ingest" class="btn btn-secondary btn-sm">↑ Upload a document</a>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════════
+   TAB 2 — COVERAGE HEATMAP
+   Each row = a recent doc. Each column = a schema field. Colour = found/low/missing.
+   ══════════════════════════════════════════════════════════════════════════════ #}
+<div id="tab-coverage" style="display:none;padding:20px;overflow-x:auto;">
+
+  {% if coverage_rows and canonical_names %}
+
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.6;">
+    Each row is a recent upload. Each column is a confirmed schema field.
+    <span style="display:inline-flex;align-items:center;gap:4px;margin-left:10px;">
+      <span style="width:10px;height:10px;background:var(--accent);display:inline-block;"></span> Found (≥70% conf)
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;">
+      <span style="width:10px;height:10px;background:var(--warn);display:inline-block;"></span> Low confidence
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;">
+      <span style="width:10px;height:10px;background:var(--surface-2);border:1px solid var(--border);display:inline-block;"></span> Missing
+    </span>
+  </div>
+
+  <div style="min-width:max-content;">
+    {# Column headers — rotated field names #}
+    <div style="display:flex;gap:3px;margin-bottom:4px;padding-left:180px;">
+      {% for name in canonical_names %}
+      <div style="width:20px;font-size:9px;color:var(--muted);
+                  writing-mode:vertical-rl;transform:rotate(180deg);
+                  height:60px;line-height:1;overflow:hidden;
+                  font-family:'JetBrains Mono',monospace;"
+           title="{{ name }}">
+        {{ name }}
+      </div>
+      {% endfor %}
+    </div>
+
+    {# Data rows #}
+    {% for row in coverage_rows %}
+    <div style="display:flex;align-items:center;gap:3px;margin-bottom:2px;">
+      <a href="/dashboard/docs/{{ row.doc_id }}"
+         style="width:176px;flex:none;font-size:10px;color:var(--muted);
+                overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                font-family:'JetBrains Mono',monospace;"
+         title="{{ row.file_name }}">
+        {{ row.file_name }}
+      </a>
+      {% for cell in row.cells %}
+      <div style="width:20px;height:16px;flex:none;background:
+        {% if cell == 'found' %}var(--accent)
+        {% elif cell == 'low' %}var(--warn)
+        {% else %}var(--surface-2){% endif %};
+        {% if cell == 'missing' %}border:1px solid var(--border);{% endif %}
+        opacity:{% if cell == 'found' %}0.8{% elif cell == 'low' %}0.8{% else %}1{% endif %};"
+           title="{{ canonical_names[loop.index0] }}: {{ cell }}">
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div style="text-align:center;padding:32px;color:var(--dim);font-size:12px;">
+    {% if not canonical_names %}
+    Confirm a schema first to see field coverage.
+    {% else %}
+    Not enough documents processed yet to show coverage.
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════════
+   TAB 3 — RECENT UPLOADS
+   ══════════════════════════════════════════════════════════════════════════════ #}
+<div id="tab-recent" style="display:none;">
+
+  {% if recent %}
+  <div class="table-wrap" style="border:none;border-top:1px solid var(--border);">
+    <div class="table-header" style="grid-template-columns:1fr 80px 90px 50px 32px 52px;">
+      <span class="col-head">File</span>
+      <span class="col-head">Status</span>
+      <span class="col-head">Date</span>
+      <span class="col-head">Fields</span>
+      <span class="col-head" title="Signature">✍</span>
+      <span class="col-head"></span>
+    </div>
+    {% for d in recent %}
+    <div class="table-row" style="display:grid;grid-template-columns:1fr 80px 90px 50px 32px 52px;align-items:center;">
+      <span class="truncate" style="font-size:12px;color:var(--text);" title="{{ d.file_name }}">
+        {{ d.file_name }}
+      </span>
+      <span>
+        <span class="badge" style="background:{{ d.status_color }}22;color:{{ d.status_color }};font-size:10px;">
+          {{ d.status }}
+        </span>
+      </span>
+      <span class="mono fs-11 text-dim">{{ d.created_at }}</span>
+      <span class="mono fs-11 text-muted">{{ d.n_fields }}</span>
+      <span style="font-size:12px;text-align:center;"
+            title="{% if d.is_signed is none %}Not checked{% elif d.is_signed %}Signed{% else %}Unsigned{% endif %}">
+        {% if d.is_signed is none %}—
+        {% elif d.is_signed %}<span style="color:#00C97A;">✍</span>
+        {% else %}<span style="color:var(--muted);">○</span>
+        {% endif %}
+      </span>
+      <a href="/dashboard/docs/{{ d.id }}"
+         style="font-size:11px;color:var(--accent);text-decoration:none;
+                border:1px solid var(--accent);padding:2px 7px;
+                white-space:nowrap;opacity:0.85;"
+         title="Open document and PDF viewer">↗ Open</a>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="padding:32px;text-align:center;color:var(--dim);font-size:12px;">
+    No documents processed for this variant yet.
+  </div>
+  {% endif %}
+
+</div>
+
+<style>
+.stage-zero     { background: #1A2520; color: var(--muted); }
+.stage-learning { background: #2B1D0A; color: var(--warn); }
+.stage-learned  { background: var(--accent-dim); color: var(--accent); }
+.stage-opt      { background: #161B3A; color: var(--purple); }
+html[data-theme="light"] .stage-zero     { background: #E6EFEA; color: var(--muted); }
+html[data-theme="light"] .stage-learning { background: #FEF3E2; color: var(--warn); }
+html[data-theme="light"] .stage-learned  { background: var(--accent-dim); color: var(--accent); }
+html[data-theme="light"] .stage-opt      { background: #ECEEFF; color: var(--purple); }
+</style>
+
+<script>
+function switchTab(name) {
+  ['fields','coverage','recent'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === name ? 'block' : 'none';
+    const btn = document.getElementById('tab-' + t + '-btn');
+    if (btn) {
+      const active = t === name;
+      btn.style.borderBottomColor = active ? 'var(--accent)' : 'transparent';
+      btn.style.color = active ? 'var(--text)' : 'var(--muted)';
+      btn.dataset.active = active ? '1' : '';
+    }
+  });
+}
+
+/* ── Alias management ───────────────────────────────────────────────── */
+function _getAliases(canonical) {
+  const inp = document.getElementById('aliases-input-' + canonical);
+  if (!inp || !inp.value) return [];
+  return inp.value.split(',').map(a => a.trim()).filter(Boolean);
+}
+function _setAliases(canonical, list) {
+  const inp = document.getElementById('aliases-input-' + canonical);
+  if (inp) inp.value = list.join(',');
+}
+
+function removeAlias(canonical, alias) {
+  // Remove badge from DOM
+  const wrap = document.getElementById('alias-wrap-' + canonical);
+  wrap && wrap.querySelectorAll('.alias-badge[data-alias="' + alias + '"]')
+              .forEach(b => b.remove());
+  // Remove from hidden input
+  _setAliases(canonical, _getAliases(canonical).filter(a => a !== alias));
+}
+
+function addAliasOnKey(event, canonical) {
+  if (event.key !== 'Enter' && event.key !== ',') return;
+  event.preventDefault();
+  const inputEl = event.target;
+  // Normalise: lowercase, spaces→underscores, strip non-alphanumeric
+  const raw = inputEl.value.trim();
+  if (!raw) return;
+  const alias = raw.toLowerCase().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+  if (!alias) { inputEl.value = ''; return; }
+
+  const current = _getAliases(canonical);
+  if (current.includes(alias)) { inputEl.value = ''; return; }  // already present
+
+  // Create badge
+  const wrap = document.getElementById('alias-wrap-' + canonical);
+  const badge = document.createElement('span');
+  badge.className = 'alias-badge';
+  badge.setAttribute('data-canonical', canonical);
+  badge.setAttribute('data-alias', alias);
+  badge.style.cssText = 'display:inline-flex;align-items:center;gap:2px;font-size:10px;' +
+    'font-family:JetBrains Mono,monospace;background:var(--surface-1);' +
+    'border:1px solid var(--accent);color:var(--accent);padding:1px 4px 1px 5px;';
+  badge.innerHTML = alias +
+    '<button type="button" onclick="removeAlias(\'' + canonical + '\',\'' + alias + '\')" ' +
+    'style="background:transparent;border:none;color:var(--accent);cursor:pointer;' +
+    'font-size:11px;line-height:1;padding:0;margin:0;opacity:0.7;" title="Remove alias">×</button>';
+  // Insert before the add-alias text input (last child)
+  wrap.insertBefore(badge, inputEl);
+
+  // Update hidden input
+  current.push(alias);
+  _setAliases(canonical, current);
+  inputEl.value = '';
+}
+</script>

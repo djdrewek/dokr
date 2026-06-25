@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Ingest{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <div class="page-header">
+    <div class="page-title">Ingest document</div>
+    <div class="page-subtitle">Upload a PDF and watch the pipeline run in real time</div>
+  </div>
+
+  <div class="grid-2" style="gap:32px;align-items:flex-start;">
+
+    <!-- Upload zone -->
+    <div>
+      <form id="upload-form"
+            hx-post="/dashboard/ingest/upload"
+            hx-target="#pipeline-trace"
+            hx-swap="innerHTML"
+            hx-encoding="multipart/form-data"
+            hx-indicator="#upload-spinner">
+
+        <div class="upload-zone" id="drop-zone">
+          <input type="file" name="file" id="file-input" accept=".pdf" required>
+          <div id="drop-hint">
+            <div style="font-size:32px;margin-bottom:12px;opacity:0.3;">⬆</div>
+            <div class="fw-500 text-text" style="margin-bottom:6px;">Drop a PDF here</div>
+            <div class="fs-12 text-muted">or click to browse</div>
+          </div>
+          <div id="file-chosen" style="display:none;">
+            <div class="mono fs-12 text-accent" id="chosen-name"></div>
+            <div class="fs-12 text-muted mt-4" id="chosen-size"></div>
+          </div>
+        </div>
+
+        <div class="flex gap-8 mt-16" style="align-items:center;">
+          <button type="submit" class="btn btn-primary" id="upload-btn" disabled>
+            Run pipeline
+          </button>
+          <span id="upload-spinner" class="htmx-indicator flex items-center gap-8">
+            <span class="spinner"></span>
+            <span class="mono fs-11 text-muted">Processing — this may take 20–30s for scanned PDFs…</span>
+          </span>
+        </div>
+      </form>
+
+      <!-- API curl reference -->
+      <div class="panel mt-24">
+        <div class="panel-title">API equivalent</div>
+        <div class="mono fs-11 text-muted" style="line-height:1.8;word-break:break-all;">
+          curl -X POST http://localhost:8000/v1/documents/submit \<br>
+          &nbsp;&nbsp;-H "Authorization: Bearer {{ api_key }}" \<br>
+          &nbsp;&nbsp;-F "file=@yourfile.pdf"
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipeline trace -->
+    <div>
+      <div class="fw-500 mb-16">Pipeline trace</div>
+      <div id="pipeline-trace">
+        <!-- Recent uploads as starting content -->
+        {% if recent %}
+        <div class="panel-title">Recently ingested</div>
+        {% for d in recent %}
+        <div class="table-row" style="border:1px solid var(--border);border-bottom:none;">
+          <span class="truncate" style="flex:1;font-size:12px;">{{ d.file_name }}</span>
+          <span class="badge" style="color:{{ d.status_color }};background:{{ d.status_bg }};">{{ d.status }}</span>
+          <span class="mono text-dim" style="font-size:11px;">{{ d.created_at }}</span>
+        </div>
+        {% endfor %}
+        <div style="border:1px solid var(--border);border-top:none;height:1px;"></div>
+        {% else %}
+        <div style="padding:48px;text-align:center;border:1px solid var(--border);">
+          <div class="mono fs-12 text-dim">Upload a document to see the pipeline trace here</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const input = document.getElementById('file-input');
+  const btn = document.getElementById('upload-btn');
+  const hint = document.getElementById('drop-hint');
+  const chosen = document.getElementById('file-chosen');
+  const chosenName = document.getElementById('chosen-name');
+  const chosenSize = document.getElementById('chosen-size');
+
+  function updateFile(file) {
+    if (!file) return;
+    chosenName.textContent = file.name;
+    chosenSize.textContent = (file.size / 1024).toFixed(0) + ' KB';
+    hint.style.display = 'none';
+    chosen.style.display = 'block';
+    btn.disabled = false;
+  }
+
+  input.addEventListener('change', () => updateFile(input.files[0]));
+
+  // After upload completes, scroll to the trace
+  document.getElementById('upload-form').addEventListener('htmx:afterRequest', () => {
+    document.getElementById('pipeline-trace').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Reset form
+    hint.style.display = 'block';
+    chosen.style.display = 'none';
+    btn.disabled = true;
+    input.value = '';
+  });
+</script>
+{% endblock %}
