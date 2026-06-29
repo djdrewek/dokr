@@ -4,45 +4,55 @@
   <meta charset="UTF-8" />
   <!--
     Dokr Outlook Add-in — Function File
-    Served from the same FastAPI server as the API, so all fetch() calls
-    use relative URLs and there are no CORS issues.
+    Served from /addin/ on the same FastAPI/ngrok server.
 
     To use locally:
       1. Run the API:  uvicorn app.main:app --reload
       2. Expose it:    ngrok http 8000
-      3. Edit manifest.xml — replace YOUR_NGROK_URL with the ngrok https URL
-      4. Sideload manifest.xml in Outlook (see README.md)
+      3. Open the Dokr Panel task pane → Settings → paste the ngrok URL → Save
+         (This updates the server URL for this add-in without touching code.)
+      4. The manifest.xml URLs only need updating when you change the host entirely
+         (e.g. switching from GitHub Pages to production).
+
+    Config is stored in localStorage (shared with taskpane.html on the same origin).
+      dokr_base_url  — Dokr server base URL  (e.g. https://abc123.ngrok-free.app)
+      dokr_api_key   — API key               (optional)
+      dokr_priority  — default priority      ("standard" | "express")
+      dokr_history   — JSON array of last 30 submission results
   -->
   <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
   <script>
     "use strict";
 
-    // ── Config ────────────────────────────────────────────────────────────────
-    // Full ngrok URL — update this whenever your ngrok tunnel URL changes.
-    const SUBMIT_PATH = "https://lily-dragging-buffalo.ngrok-free.dev/v1/documents/submit";
+    // ── Config defaults (used until the user saves settings via the task pane) ─
+    const DEFAULT_BASE_URL = "https://lily-dragging-buffalo.ngrok-free.dev";
+    const HISTORY_KEY      = "dokr_history";
+    const BASE_URL_KEY     = "dokr_base_url";
+    const API_KEY_KEY      = "dokr_api_key";
+    const PRIORITY_KEY     = "dokr_priority";
+    const MAX_HISTORY      = 30;
 
-    // Optional: add a static API key header if you add auth later.
-    // const API_KEY = "your-key-here";
+    // ── Derived config (read from localStorage at button-press time) ──────────
+    function getBaseUrl()  { return (localStorage.getItem(BASE_URL_KEY)  || DEFAULT_BASE_URL).replace(/\/$/, ""); }
+    function getApiKey()   { return localStorage.getItem(API_KEY_KEY)   || ""; }
+    function getPriority() { return localStorage.getItem(PRIORITY_KEY)  || "standard"; }
+    function getSubmitPath() { return getBaseUrl() + "/v1/documents/submit"; }
 
     // ── Office.js bootstrap ───────────────────────────────────────────────────
     Office.onReady(() => {
-      // Nothing to initialise for a pure function-file add-in.
+      // Function files have no visible UI — nothing to initialise here.
     });
 
     // ── Main entry point (called by the ribbon button) ────────────────────────
     async function sendToDokr(event) {
       const item = Office.context.mailbox.item;
 
-      // Capture the signed-in user's email address so Dokr can notify them if
-      // the document needs human review.  userProfile is always populated in
-      // Outlook (desktop + web) — no async call needed.
+      // Capture the signed-in user's email so Dokr can notify them on failure.
       const submitterEmail =
         (Office.context.mailbox.userProfile &&
          Office.context.mailbox.userProfile.emailAddress) || "";
 
-      // Filter to real file attachments only — exclude inline images (logos,
-      // email signatures, embedded graphics) which also come through as File type
-      // but have isInline === true.
+      // Filter to real file attachments only — exclude inline images / signatures.
       const files = (item.attachments || []).filter(
         a => a.attachmentType === Office.MailboxEnums.AttachmentType.File && !a.isInline
       );
@@ -63,16 +73,25 @@
       for (const att of files) {
         try {
           const content = await getAttachmentContent(att.id);
-          await upload(content, att.name, att.contentType || "application/octet-stream", submitterEmail);
+          const result  = await upload(content, att.name, att.contentType || "application/octet-stream", submitterEmail);
+          saveHistory({ file: att.name, status: "sent", doc_id: result.id, time: new Date().toISOString() });
           ok++;
         } catch (err) {
-          errors.push(`${att.name}: ${err.message}`);
+          const isDuplicate = err.message.includes("exact_duplicate");
+          const status = isDuplicate ? "duplicate" : "failed";
+          saveHistory({ file: att.name, status, doc_id: null, error: err.message, time: new Date().toISOString() });
+          if (!isDuplicate) errors.push(`${att.name}: ${err.message}`);
         }
       }
 
-      if (errors.length === 0) {
+      if (errors.length === 0 && ok > 0) {
         await notify(item, "success",
           `✓ ${ok} file${ok > 1 ? "s" : ""} sent to Dokr`
+        );
+      } else if (errors.length === 0 && ok === 0) {
+        // All were duplicates
+        await notify(item, "info",
+          `⊘ Already processed — Dokr recognised ${files.length} duplicate${files.length > 1 ? "s" : ""}`
         );
       } else {
         await notify(item, "error",
@@ -81,6 +100,16 @@
       }
 
       event.completed();
+    }
+
+    // ── History ────────────────────────────────────────────────────────────────
+    function saveHistory(entry) {
+      try {
+        const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+        history.unshift(entry);
+        history.splice(MAX_HISTORY);   // keep last N
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+      } catch (_) { /* never block the pipeline */ }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -98,46 +127,52 @@
       });
     }
 
-    /** Decode base64 attachment and POST as multipart/form-data to the API. */
+    /**
+     * Decode base64 attachment and POST as multipart/form-data to the API.
+     * Returns the parsed JSON response body (contains doc id, status, etc.)
+     */
     async function upload(content, filename, mimeType, submitterEmail) {
-      // content.content is base64-encoded file bytes
       const binary = atob(content.content);
       const bytes  = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
       const blob = new Blob([bytes], { type: mimeType });
       const form = new FormData();
-      form.append("file", new File([blob], filename, { type: mimeType }));
-      // Pass the submitter's email so Dokr can notify them on failure
+      form.append("file",      new File([blob], filename, { type: mimeType }));
+      form.append("priority",  getPriority());
       if (submitterEmail) form.append("submitter_email", submitterEmail);
 
       const headers = {
-        // Bypasses the ngrok browser-warning interstitial for API calls.
-        // Safe to leave in permanently — ignored by non-ngrok servers.
+        // Bypasses the ngrok browser-warning interstitial — ignored by other servers.
         "ngrok-skip-browser-warning": "true",
       };
-      // if (API_KEY) headers["X-API-Key"] = API_KEY;
+      const apiKey = getApiKey();
+      if (apiKey) headers["X-API-Key"] = apiKey;
 
-      const res = await fetch(SUBMIT_PATH, {
+      const res = await fetch(getSubmitPath(), {
         method: "POST",
         body:   form,
         headers,
       });
 
+      if (res.status === 409) {
+        // Exact duplicate — not a hard failure, but we surface it differently
+        const body = await res.json().catch(() => ({}));
+        const err  = new Error(`exact_duplicate: ${body.detail?.original_document_id || ""}`);
+        throw err;
+      }
+
       if (!res.ok) {
         const text = await res.text().catch(() => res.statusText);
         throw new Error(`HTTP ${res.status}: ${text.slice(0, 120)}`);
       }
+
+      return res.json();   // { id, status, ... }
     }
 
     /**
-     * Show a notification bar at the top of the email.
-     *
+     * Show a notification bar at the top of the reading pane.
      * type: "info" | "success" | "error"
-     *
-     * Office only exposes InformationalMessage and ErrorMessage natively.
-     * We use InformationalMessage for both info and success (the message
-     * text carries the ✓ prefix for success).
      */
     function notify(item, type, message) {
       return new Promise(resolve => {
@@ -151,7 +186,7 @@
                 type: Office.MailboxEnums.ItemNotificationMessageType.InformationalMessage,
                 message,
                 icon: "Icon.16x16",
-                persistent: type === "info",   // "uploading" stays; success auto-dismisses
+                persistent: type === "info",   // uploading bar stays; success fades
               };
 
         item.notificationMessages.replaceAsync("dokr-status", payload, () => resolve());

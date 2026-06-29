@@ -6,7 +6,7 @@
   xsi:type="MailApp">
 
   <Id>d6156df2-03bb-4e1c-8409-a61576c33a57</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.1.0.0</Version>
   <ProviderName>Dokr</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Dokr"/>
@@ -65,6 +65,7 @@
             <OfficeTab id="TabDefault">
               <Group id="dokr.Group1">
                 <Label resid="GroupLabel"/>
+                <!-- Button 1: one-click send attachments to Dokr -->
                 <Control xsi:type="Button" id="dokr.Button1">
                   <Label resid="ButtonLabel"/>
                   <Supertip>
@@ -78,6 +79,24 @@
                   </Icon>
                   <Action xsi:type="ExecuteFunction">
                     <FunctionName>sendToDokr</FunctionName>
+                  </Action>
+                </Control>
+
+                <!-- Button 2: open the Dokr task pane (history + settings) -->
+                <Control xsi:type="Button" id="dokr.PanelButton">
+                  <Label resid="PanelButtonLabel"/>
+                  <Supertip>
+                    <Title resid="PanelButtonLabel"/>
+                    <Description resid="PanelButtonTip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon16"/>
+                    <bt:Image size="32" resid="Icon32"/>
+                    <bt:Image size="80" resid="Icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>DokrPanel</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url"/>
                   </Action>
                 </Control>
               </Group>
@@ -96,13 +115,16 @@
       </bt:Images>
       <bt:Urls>
         <bt:Url id="FunctionFile.Url" DefaultValue="https://djdrewek.github.io/dokr/addin.html"/>
+        <bt:Url id="Taskpane.Url"     DefaultValue="https://djdrewek.github.io/dokr/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="GroupLabel"   DefaultValue="Dokr"/>
-        <bt:String id="ButtonLabel"  DefaultValue="Send to Dokr"/>
+        <bt:String id="GroupLabel"        DefaultValue="Dokr"/>
+        <bt:String id="ButtonLabel"       DefaultValue="Send to Dokr"/>
+        <bt:String id="PanelButtonLabel"  DefaultValue="Dokr Panel"/>
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="ButtonTip" DefaultValue="Upload all attachments in this email to Dokr for automatic processing"/>
+        <bt:String id="ButtonTip"    DefaultValue="Upload all attachments in this email to Dokr for automatic processing"/>
+        <bt:String id="PanelButtonTip" DefaultValue="Open the Dokr submission history and settings panel"/>
       </bt:LongStrings>
     </Resources>
 
