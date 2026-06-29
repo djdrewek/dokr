@@ -97,12 +97,65 @@
         </div>
       </div>
 
-      {% if not api_key_set %}
-      <div style="margin-top:16px;padding:10px 14px;border-left:2px solid var(--warn);background:#2B1D0A;">
-        <div class="fs-12 text-text">⚠ ANTHROPIC_API_KEY not set — running regex-only fallback</div>
-        <div class="fs-11 text-muted" style="margin-top:4px;">Add your key to .env to enable AI-first learning.</div>
+    </div>
+  </div>
+
+  <!-- ── Integrations status ───────────────────────────────────────────────── -->
+  <div class="panel" style="margin-bottom:28px;">
+    <div class="panel-title" style="margin-bottom:14px;">Integrations</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+
+      {% for key, intg in integrations.items() %}
+      <div style="border:1px solid {% if intg.ok %}rgba(0,201,122,0.3){% else %}var(--border){% endif %};
+                  border-radius:8px;padding:12px 14px;
+                  background:{% if intg.ok %}rgba(0,201,122,0.04){% else %}var(--surface){% endif %};">
+
+        <!-- Header row -->
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <span style="font-size:14px;line-height:1;">
+            {% if intg.ok %}✓{% else %}✗{% endif %}
+          </span>
+          <span class="fs-12 font-medium"
+                style="color:{% if intg.ok %}var(--accent){% else %}var(--danger){% endif %};">
+            {{ intg.label }}
+          </span>
+        </div>
+
+        <!-- Detail / auth method -->
+        <div class="fs-11 text-muted" style="line-height:1.5;">{{ intg.detail }}</div>
+
+        <!-- SharePoint auth method chip -->
+        {% if key == 'sharepoint' and intg.ok %}
+        <div style="margin-top:7px;">
+          {% if intg.auth_method == 'client_credentials' %}
+          <span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:12px;
+                       color:var(--accent);background:rgba(0,201,122,0.12);">
+            CLIENT CREDENTIALS
+          </span>
+          {% else %}
+          <span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:12px;
+                       color:var(--warn);background:rgba(245,158,11,0.12);"
+                title="Static tokens expire ~1 hour. Switch to SP_TENANT_ID + SP_CLIENT_ID + SP_CLIENT_SECRET for production.">
+            STATIC TOKEN ⚠ EXPIRES ~1H
+          </span>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Env keys hint -->
+        <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:3px;">
+          {% for k in intg.env_keys %}
+          <span style="font-family:monospace;font-size:9px;
+                       color:{% if intg.ok %}var(--muted){% else %}var(--warn){% endif %};
+                       background:var(--surface-2,#1A1A1A);
+                       padding:1px 5px;border-radius:3px;border:1px solid var(--border);">
+            {{ k }}
+          </span>
+          {% endfor %}
+        </div>
       </div>
-      {% endif %}
+      {% endfor %}
+
     </div>
   </div>
 

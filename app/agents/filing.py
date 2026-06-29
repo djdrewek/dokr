@@ -113,7 +113,13 @@ class FilingAgent(BaseAgent):
 
         # Attempt live SharePoint upload if Graph API credentials are configured
         from app.config import settings
-        if settings.sp_site_url and settings.sp_access_token:
+        sp_configured = bool(
+            settings.sp_site_url and (
+                (settings.sp_tenant_id and settings.sp_client_id and settings.sp_client_secret)
+                or settings.sp_access_token
+            )
+        )
+        if sp_configured:
             # Build Graph API upload URL — requires original PDF bytes.
             # In production: pass pdf_bytes through the pipeline or fetch from a temp store.
             # For scaffold: we record the path without uploading (bytes not available here).
@@ -122,13 +128,12 @@ class FilingAgent(BaseAgent):
                 file_name=doc.file_name,
                 pdf_bytes=None,          # scaffold: no bytes available at this stage
                 sp_site_url=settings.sp_site_url,
-                sp_access_token=settings.sp_access_token,
                 sp_drive_id=settings.sp_drive_id,
             )
         else:
             upload_detail = (
                 "SharePoint archiving stubbed (no SP credentials configured). "
-                "Set SP_SITE_URL + SP_ACCESS_TOKEN in .env to enable live upload."
+                "Set SP_SITE_URL + SP_TENANT_ID + SP_CLIENT_ID + SP_CLIENT_SECRET in .env to enable live upload."
             )
 
         # Update ShipmentRecord if linked
@@ -164,12 +169,77 @@ class FilingAgent(BaseAgent):
 
 # ── SharePoint Graph API helper ───────────────────────────────────────────────
 
+# Simple in-process token cache: {"token": str, "expires_at": float (unix timestamp)}
+_SP_TOKEN_CACHE: dict = {}
+
+
+def _get_sp_token() -> str | None:
+    """
+    Return a valid Graph API bearer token, refreshing as needed.
+
+    Priority:
+      1. Client credentials flow (SP_TENANT_ID + SP_CLIENT_ID + SP_CLIENT_SECRET)
+         — tokens are cached in-process and refreshed ~1 min before expiry.
+      2. Static token (SP_ACCESS_TOKEN) — for dev/testing only; expires ~1 hour.
+      3. None — no SP auth configured.
+    """
+    import time
+    import httpx
+    from app.config import settings
+
+    # ── Option A: client credentials ─────────────────────────────────────────
+    if settings.sp_tenant_id and settings.sp_client_id and settings.sp_client_secret:
+        cached = _SP_TOKEN_CACHE.get("token")
+        expires_at = _SP_TOKEN_CACHE.get("expires_at", 0.0)
+
+        # Return cached token if it has > 60 s left
+        if cached and time.time() < expires_at - 60:
+            return cached
+
+        # Fetch a fresh token via the OAuth2 client credentials flow
+        token_url = (
+            f"https://login.microsoftonline.com/{settings.sp_tenant_id}"
+            "/oauth2/v2.0/token"
+        )
+        try:
+            resp = httpx.post(
+                token_url,
+                data={
+                    "grant_type":    "client_credentials",
+                    "client_id":     settings.sp_client_id,
+                    "client_secret": settings.sp_client_secret,
+                    "scope":         "https://graph.microsoft.com/.default",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            token = data["access_token"]
+            expires_in = int(data.get("expires_in", 3600))
+            _SP_TOKEN_CACHE["token"] = token
+            _SP_TOKEN_CACHE["expires_at"] = time.time() + expires_in
+            return token
+        except Exception as exc:
+            # Log but don't crash — caller will handle None
+            import logging
+            logging.getLogger(__name__).warning(
+                "SharePoint token refresh failed: %s: %s", type(exc).__name__, exc
+            )
+            return None
+
+    # ── Option B: static token (dev/testing only) ─────────────────────────────
+    if settings.sp_access_token:
+        return settings.sp_access_token
+
+    return None
+
+
 def _upload_to_sharepoint(
     path: str,
     file_name: str,
     pdf_bytes: bytes | None,
     sp_site_url: str,
-    sp_access_token: str,
+    sp_access_token: str | None = None,   # kept for call-site compat; ignored if client creds configured
     sp_drive_id: str | None = None,
 ) -> str:
     """
@@ -192,9 +262,16 @@ def _upload_to_sharepoint(
             "Path recorded locally. In production: pass pdf_bytes through the pipeline context."
         )
 
+    # Resolve bearer token (client creds preferred over static token)
+    token = _get_sp_token()
+    if not token:
+        return (
+            "SharePoint upload skipped — no valid token available. "
+            "Check SP_TENANT_ID/SP_CLIENT_ID/SP_CLIENT_SECRET (or SP_ACCESS_TOKEN) in .env."
+        )
+
     # Build Graph API upload URL
-    # The site-relative path must be URL-encoded
-    from urllib.parse import quote
+    from urllib.parse import quote, urlparse
     encoded_path = quote(path.lstrip("/"), safe="/")
 
     if sp_drive_id:
@@ -203,21 +280,32 @@ def _upload_to_sharepoint(
             f"/drives/{sp_drive_id}/root:/{encoded_path}:/content"
         )
     else:
-        # Resolve site ID from sp_site_url (e.g. https://tenant.sharepoint.com/sites/dokr)
-        # Graph endpoint: /sites/{hostname}:{site-path}/drive/root:/{path}:/content
-        from urllib.parse import urlparse
         parsed = urlparse(sp_site_url)
         hostname = parsed.netloc
-        site_path = parsed.path  # e.g. /sites/dokr
+        site_path = parsed.path          # e.g. /sites/dokr
         upload_url = (
             f"https://graph.microsoft.com/v1.0"
             f"/sites/{hostname}:{site_path}/drive/root:/{encoded_path}:/content"
         )
 
+    # Detect content type from file extension
+    ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    content_type_map = {
+        "pdf":  "application/pdf",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xml":  "application/xml",
+        "csv":  "text/csv",
+        "png":  "image/png",
+        "jpg":  "image/jpeg",
+        "jpeg": "image/jpeg",
+    }
+    content_type = content_type_map.get(ext, "application/octet-stream")
+
     headers = {
-        "Authorization": f"Bearer {sp_access_token}",
-        "Content-Type": "application/pdf",
-        "User-Agent": "Dokr/1.0",
+        "Authorization": f"Bearer {token}",
+        "Content-Type":  content_type,
+        "User-Agent":    "Dokr/1.0",
     }
 
     try:
@@ -226,6 +314,14 @@ def _upload_to_sharepoint(
             data = resp.json()
             web_url = data.get("webUrl", upload_url)
             return f"SharePoint upload successful (live). URL: {web_url}."
+        elif resp.status_code == 401:
+            # Token may have been revoked — clear cache so next call retries
+            _SP_TOKEN_CACHE.clear()
+            return (
+                f"SharePoint upload failed: 401 Unauthorized. "
+                "Token may be expired or revoked. Check app registration permissions. "
+                "Path recorded locally."
+            )
         else:
             return (
                 f"SharePoint upload failed. HTTP {resp.status_code}. "

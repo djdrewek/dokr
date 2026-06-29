@@ -102,6 +102,102 @@
       event.completed();
     }
 
+    // ── SharePoint push ───────────────────────────────────────────────────────
+
+    /**
+     * Ribbon button handler — uploads all email attachments directly to SharePoint
+     * via the Dokr /v1/sharepoint/upload endpoint.
+     *
+     * The server holds SP credentials (SP_SITE_URL + SP_ACCESS_TOKEN) so no
+     * sensitive config is needed in the add-in.  The add-in just needs a valid
+     * Dokr API key and the Dokr server URL (same as for sendToDokr).
+     */
+    async function saveToSharePoint(event) {
+      const item = Office.context.mailbox.item;
+
+      const files = (item.attachments || []).filter(
+        a => a.attachmentType === Office.MailboxEnums.AttachmentType.File && !a.isInline
+      );
+
+      if (files.length === 0) {
+        await notify(item, "error", "No file attachments found in this email.");
+        event.completed();
+        return;
+      }
+
+      await notify(item, "info",
+        `Saving ${files.length} attachment${files.length > 1 ? "s" : ""} to SharePoint…`
+      );
+
+      const base   = getBaseUrl();
+      const apiKey = getApiKey();
+
+      // Build the target folder: /Shared Documents/Dokr/from-outlook/YYYY-MM
+      const spFolder = localStorage.getItem("dokr_sp_folder") || "";
+
+      let ok = 0;
+      const errors  = [];
+      const webUrls = [];
+
+      for (const att of files) {
+        try {
+          // Get the raw base64 content from Outlook
+          const content = await getAttachmentContent(att.id);
+          const binary  = atob(content.content);
+          const bytes   = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+          const mimeType = att.contentType || "application/octet-stream";
+          const blob     = new Blob([bytes], { type: mimeType });
+
+          const form = new FormData();
+          form.append("file", new File([blob], att.name, { type: mimeType }));
+          if (spFolder) form.append("folder_path", spFolder);
+
+          const headers = { "ngrok-skip-browser-warning": "true" };
+          if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
+
+          const res = await fetch(base + "/v1/sharepoint/upload", {
+            method:  "POST",
+            body:    form,
+            headers,
+            signal:  AbortSignal.timeout(30000),
+          });
+
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            const msg  = (body.detail && (body.detail.message || JSON.stringify(body.detail))) || res.statusText;
+            errors.push(`${att.name}: ${msg}`);
+            continue;
+          }
+
+          const data = await res.json();
+          if (data.web_url) webUrls.push(data.web_url);
+          ok++;
+
+        } catch (err) {
+          errors.push(`${att.name}: ${err.message}`);
+        }
+      }
+
+      if (errors.length === 0 && ok > 0) {
+        const urlNote = webUrls.length ? ` → ${webUrls[0]}` : "";
+        await notify(item, "success",
+          `✓ ${ok} file${ok > 1 ? "s" : ""} saved to SharePoint${urlNote}`
+        );
+      } else if (ok > 0 && errors.length > 0) {
+        await notify(item, "error",
+          `${ok} saved, ${errors.length} failed — ${errors.join(" | ")}`
+        );
+      } else {
+        await notify(item, "error",
+          `SharePoint upload failed — ${errors.join(" | ")}`
+        );
+      }
+
+      event.completed();
+    }
+
     // ── History ────────────────────────────────────────────────────────────────
     function saveHistory(entry) {
       try {
@@ -147,7 +243,7 @@
         "ngrok-skip-browser-warning": "true",
       };
       const apiKey = getApiKey();
-      if (apiKey) headers["X-API-Key"] = apiKey;
+      if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
 
       const res = await fetch(getSubmitPath(), {
         method: "POST",

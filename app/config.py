@@ -14,12 +14,19 @@ When absent, PostingAgent runs in stub mode (synthetic reference only).
 
 SharePoint (Microsoft Graph) integration
 ──────────────────────────────────────────
-Set SP_SITE_URL and SP_ACCESS_TOKEN to enable live document archiving.
+Set SP_SITE_URL plus one of the two auth options below to enable live document archiving.
 When absent, FilingAgent records the path locally (no upload).
 
   SP_SITE_URL      = https://tata.sharepoint.com/sites/dokr
-  SP_ACCESS_TOKEN  = <Graph API access token (Files.ReadWrite.All scope)>
   SP_DRIVE_ID      = <optional: specific drive ID, defaults to default drive>
+
+Option A — App registration (recommended, tokens refresh automatically):
+  SP_TENANT_ID     = <AAD tenant GUID or domain, e.g. yourcompany.onmicrosoft.com>
+  SP_CLIENT_ID     = <Application (client) ID from Azure app registration>
+  SP_CLIENT_SECRET = <Client secret value — grant Files.ReadWrite.All under Sites.Selected>
+
+Option B — Static token (dev/testing only, expires ~1 hour):
+  SP_ACCESS_TOKEN  = <Graph API bearer token with Files.ReadWrite.All scope>
 
 Failure notifications
 ──────────────────────
@@ -87,8 +94,15 @@ class Settings(BaseSettings):
     # ── SharePoint (Microsoft Graph) ──────────────────────────────────────────
     sp_site_url:      Optional[str] = None
     # e.g. https://tata.sharepoint.com/sites/dokr
+
+    # Preferred: app registration (client credentials flow — token refreshes automatically)
+    sp_tenant_id:     Optional[str] = None   # AAD tenant GUID or domain
+    sp_client_id:     Optional[str] = None   # App registration Application (client) ID
+    sp_client_secret: Optional[str] = None   # App registration client secret value
+
+    # Fallback: paste a raw Graph API bearer token (expires ~1 hour — dev/testing only)
     sp_access_token:  Optional[str] = None
-    # Graph API token with Files.ReadWrite.All scope
+
     sp_drive_id:      Optional[str] = None
     # Optional specific drive ID; defaults to the site's default document library
 

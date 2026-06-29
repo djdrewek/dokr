@@ -308,6 +308,41 @@
 
     <hr class="divider" />
 
+    <!-- SharePoint section -->
+    <div class="field-group">
+      <label class="field-label">SharePoint</label>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:6px;">
+        SP credentials (site URL + token) live on the server — configure them via
+        <span style="font-family:monospace;color:var(--muted);">SP_SITE_URL</span> +
+        <span style="font-family:monospace;color:var(--muted);">SP_ACCESS_TOKEN</span> in
+        <span style="font-family:monospace;color:var(--muted);">.env</span>.
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">
+          Default folder
+          <span style="color:var(--dim);font-size:10px;">(optional)</span>
+        </label>
+        <input type="text" id="cfg-sp-folder" class="field-input"
+               placeholder="/Shared Documents/Dokr/from-outlook" />
+        <div style="font-size:11px;color:var(--dim);">
+          Override the target SharePoint folder for the "Save to SharePoint" button.
+          Leave blank for the default monthly folder.
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:4px;">
+        <button class="btn btn-secondary" onclick="checkSharePointStatus()" style="flex:none;padding:8px 14px;">
+          Check SP status
+        </button>
+      </div>
+      <div class="status-line status-idle" id="sp-status">
+        Not checked — click "Check SP status" to verify.
+      </div>
+    </div>
+
+    <hr class="divider" />
+
     <div class="field-group">
       <label class="field-label">Danger Zone</label>
       <button class="btn btn-secondary" onclick="clearHistory()" style="flex:none;">
@@ -326,6 +361,7 @@
     const BASE_URL_KEY      = "dokr_base_url";
     const API_KEY_KEY       = "dokr_api_key";
     const PRIORITY_KEY      = "dokr_priority";
+    const SP_FOLDER_KEY     = "dokr_sp_folder";
     const MAX_HISTORY       = 30;
 
     // ── Office bootstrap ───────────────────────────────────────────────────────
@@ -445,15 +481,17 @@
 
     // ── Settings ───────────────────────────────────────────────────────────────
     function loadSettingsForm() {
-      document.getElementById("cfg-url").value      = localStorage.getItem(BASE_URL_KEY) || DEFAULT_BASE_URL;
-      document.getElementById("cfg-key").value      = localStorage.getItem(API_KEY_KEY)  || "";
-      document.getElementById("cfg-priority").value = localStorage.getItem(PRIORITY_KEY) || "standard";
+      document.getElementById("cfg-url").value       = localStorage.getItem(BASE_URL_KEY) || DEFAULT_BASE_URL;
+      document.getElementById("cfg-key").value       = localStorage.getItem(API_KEY_KEY)  || "";
+      document.getElementById("cfg-priority").value  = localStorage.getItem(PRIORITY_KEY) || "standard";
+      document.getElementById("cfg-sp-folder").value = localStorage.getItem(SP_FOLDER_KEY) || "";
     }
 
     function saveSettings() {
       const url      = document.getElementById("cfg-url").value.trim().replace(/\/$/, "");
       const key      = document.getElementById("cfg-key").value.trim();
       const priority = document.getElementById("cfg-priority").value;
+      const spFolder = document.getElementById("cfg-sp-folder").value.trim();
 
       if (!url) {
         setConnStatus("error", "Server URL cannot be empty.");
@@ -471,6 +509,11 @@
         localStorage.removeItem(API_KEY_KEY);
       }
       localStorage.setItem(PRIORITY_KEY, priority);
+      if (spFolder) {
+        localStorage.setItem(SP_FOLDER_KEY, spFolder);
+      } else {
+        localStorage.removeItem(SP_FOLDER_KEY);
+      }
 
       setConnStatus("ok", "Settings saved.");
       setTimeout(() => setConnStatus("idle", "Not tested — click Test to verify connection."), 2500);
@@ -492,6 +535,50 @@
         }
       } catch (err) {
         setConnStatus("error", `Connection failed: ${err.message}`);
+      }
+    }
+
+    async function checkSharePointStatus() {
+      const url    = (localStorage.getItem(BASE_URL_KEY) || DEFAULT_BASE_URL).replace(/\/$/, "");
+      const apiKey = localStorage.getItem(API_KEY_KEY) || "";
+      const el     = document.getElementById("sp-status");
+      el.className = "status-line status-idle";
+      el.textContent = "Checking SharePoint status…";
+
+      if (!apiKey) {
+        el.className = "status-line status-error";
+        el.textContent = "API key required — save your key in Settings first.";
+        return;
+      }
+
+      try {
+        const res = await fetch(url + "/v1/sharepoint/status", {
+          headers: {
+            "Authorization": "Bearer " + apiKey,
+            "ngrok-skip-browser-warning": "true",
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data.configured) {
+            el.className = "status-line status-ok";
+            el.textContent = `✓ SharePoint configured — ${data.site_url || "site connected"}`;
+          } else {
+            el.className = "status-line status-error";
+            el.textContent = "SharePoint not configured on server — add SP_SITE_URL + SP_ACCESS_TOKEN to .env";
+          }
+        } else if (res.status === 401) {
+          el.className = "status-line status-error";
+          el.textContent = "Invalid API key — update your key in Settings.";
+        } else {
+          el.className = "status-line status-error";
+          el.textContent = `HTTP ${res.status} — server error`;
+        }
+      } catch (err) {
+        el.className = "status-line status-error";
+        el.textContent = `Check failed: ${err.message}`;
       }
     }
 

@@ -82,7 +82,24 @@
                   </Action>
                 </Control>
 
-                <!-- Button 2: open the Dokr task pane (history + settings) -->
+                <!-- Button 2: save attachments directly to SharePoint -->
+                <Control xsi:type="Button" id="dokr.SharePointButton">
+                  <Label resid="SharePointButtonLabel"/>
+                  <Supertip>
+                    <Title resid="SharePointButtonLabel"/>
+                    <Description resid="SharePointButtonTip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon16"/>
+                    <bt:Image size="32" resid="Icon32"/>
+                    <bt:Image size="80" resid="Icon80"/>
+                  </Icon>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>saveToSharePoint</FunctionName>
+                  </Action>
+                </Control>
+
+                <!-- Button 3: open the Dokr task pane (history + settings) -->
                 <Control xsi:type="Button" id="dokr.PanelButton">
                   <Label resid="PanelButtonLabel"/>
                   <Supertip>
@@ -118,13 +135,15 @@
         <bt:Url id="Taskpane.Url"     DefaultValue="https://djdrewek.github.io/dokr/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="GroupLabel"        DefaultValue="Dokr"/>
-        <bt:String id="ButtonLabel"       DefaultValue="Send to Dokr"/>
-        <bt:String id="PanelButtonLabel"  DefaultValue="Dokr Panel"/>
+        <bt:String id="GroupLabel"             DefaultValue="Dokr"/>
+        <bt:String id="ButtonLabel"            DefaultValue="Send to Dokr"/>
+        <bt:String id="SharePointButtonLabel"  DefaultValue="Save to SharePoint"/>
+        <bt:String id="PanelButtonLabel"       DefaultValue="Dokr Panel"/>
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="ButtonTip"    DefaultValue="Upload all attachments in this email to Dokr for automatic processing"/>
-        <bt:String id="PanelButtonTip" DefaultValue="Open the Dokr submission history and settings panel"/>
+        <bt:String id="ButtonTip"         DefaultValue="Upload all attachments in this email to Dokr for automatic processing"/>
+        <bt:String id="SharePointButtonTip" DefaultValue="Save all attachments in this email directly to the SharePoint document library"/>
+        <bt:String id="PanelButtonTip"    DefaultValue="Open the Dokr submission history and settings panel"/>
       </bt:LongStrings>
     </Resources>
 

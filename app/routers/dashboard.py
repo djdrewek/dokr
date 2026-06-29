@@ -2207,7 +2207,61 @@ def _setup_context(db: Session) -> dict:
         except Exception:
             pass
 
-    return dict(client=client, doc_types=doc_types, settings_data=settings_data)
+    # ── Integration status ────────────────────────────────────────────────────
+    from app.config import settings as cfg
+    from urllib.parse import urlparse
+
+    def _mask_url(url: str | None) -> str | None:
+        if not url:
+            return None
+        try:
+            p = urlparse(url)
+            return f"{p.scheme}://{p.netloc}/…"
+        except Exception:
+            return "configured"
+
+    sp_client_creds = bool(cfg.sp_tenant_id and cfg.sp_client_id and cfg.sp_client_secret)
+    sp_static_token = bool(cfg.sp_access_token)
+    sp_ok           = bool(cfg.sp_site_url and (sp_client_creds or sp_static_token))
+
+    integrations = {
+        "ai": {
+            "ok":      bool(cfg.anthropic_api_key),
+            "label":   "AI Extraction",
+            "detail":  f"Model: {cfg.anthropic_model}" if cfg.anthropic_api_key else "Add ANTHROPIC_API_KEY to .env",
+            "env_keys": ["ANTHROPIC_API_KEY"],
+        },
+        "erp": {
+            "ok":      bool(cfg.bc_api_url and cfg.bc_api_key),
+            "label":   "Business Central",
+            "detail":  _mask_url(cfg.bc_api_url) or "Add BC_API_URL + BC_API_KEY to .env",
+            "env_keys": ["BC_API_URL", "BC_API_KEY", "BC_COMPANY"],
+        },
+        "sharepoint": {
+            "ok":          sp_ok,
+            "label":       "SharePoint",
+            "auth_method": "client_credentials" if sp_client_creds else ("static_token" if sp_static_token else "none"),
+            "detail":      (
+                (_mask_url(cfg.sp_site_url) + (" · client credentials" if sp_client_creds else " · static token ⚠"))
+                if sp_ok else "Add SP_SITE_URL + SP_TENANT_ID/CLIENT_ID/CLIENT_SECRET to .env"
+            ),
+            "env_keys": ["SP_SITE_URL", "SP_TENANT_ID", "SP_CLIENT_ID", "SP_CLIENT_SECRET"],
+        },
+        "notifications": {
+            "ok":      bool(cfg.smtp_host or cfg.teams_webhook_url),
+            "label":   "Notifications",
+            "detail":  (
+                " + ".join(filter(None, [
+                    f"SMTP ({cfg.smtp_host})" if cfg.smtp_host else None,
+                    "Teams webhook" if cfg.teams_webhook_url else None,
+                ]))
+                or "Add SMTP_HOST and/or TEAMS_WEBHOOK_URL to .env"
+            ),
+            "env_keys": ["SMTP_HOST", "TEAMS_WEBHOOK_URL"],
+        },
+    }
+
+    return dict(client=client, doc_types=doc_types, settings_data=settings_data, integrations=integrations)
 
 
 def _sample_list(db: Session, dtp_id: str) -> list[dict]:
