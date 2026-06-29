@@ -144,6 +144,10 @@ def run_pipeline(
         # Determine which stages to skip (doc-level + client-level)
         skipped = set(doc.skip_stages or []) | pcfg.disabled_stages
 
+        # match_mode=SKIP is shorthand for skip_stages=MATCHING
+        if getattr(doc, "match_mode", "REQUIRED") == "SKIP":
+            skipped.add("MATCHING")
+
         # Track whether this doc is a near-duplicate so we can diff after extraction
         near_dup_original_id: str | None = None
 
@@ -572,17 +576,28 @@ def run_pipeline(
                     db.commit()
 
             if match_outcome == "FAIL":
-                matching_agent.needs_review(
+                _match_mode = getattr(doc, "match_mode", "REQUIRED")
+                if _match_mode == "ADVISORY":
+                    # Advisory mode: record the failure but continue to POSTING.
+                    # The shipment already has the FAIL result persisted above.
+                    matching_agent.transition(
+                        doc,
+                        PipelineState.MATCHING,
+                        f"[ADVISORY] Three-way match FAIL — proceeding to POSTING. {match_result.summary}",
+                    )
+                else:
+                    # REQUIRED mode (default): halt and send to NEEDS_REVIEW.
+                    matching_agent.needs_review(
+                        doc,
+                        f"NIGO - Three-way match FAIL. {match_result.summary}",
+                    )
+                    return
+            else:
+                matching_agent.transition(
                     doc,
-                    f"NIGO - Three-way match FAIL. {match_result.summary}",
+                    PipelineState.MATCHING,
+                    match_result.summary,
                 )
-                return
-
-            matching_agent.transition(
-                doc,
-                PipelineState.MATCHING,
-                match_result.summary,
-            )
 
         # -- Stage 7: Posting -------------------------------------------------
         if "POSTING" not in skipped:
@@ -762,11 +777,19 @@ def run_pipeline_from(
                     }
                     db.commit()
             if match_outcome == "FAIL":
-                matching_agent.needs_review(
-                    doc, f"NIGO - Match still FAIL after approval. {match_result.summary}"
-                )
-                return
-            matching_agent.transition(doc, PipelineState.MATCHING, match_result.summary)
+                _match_mode = getattr(doc, "match_mode", "REQUIRED")
+                if _match_mode == "ADVISORY":
+                    matching_agent.transition(
+                        doc, PipelineState.MATCHING,
+                        f"[ADVISORY] Match still FAIL — proceeding to POSTING. {match_result.summary}",
+                    )
+                else:
+                    matching_agent.needs_review(
+                        doc, f"NIGO - Match still FAIL after approval. {match_result.summary}"
+                    )
+                    return
+            else:
+                matching_agent.transition(doc, PipelineState.MATCHING, match_result.summary)
 
         if start_idx <= 1 and "POSTING" not in skipped:
             posting_agent = _make_agent("posting", pcfg, db)

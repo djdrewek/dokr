@@ -183,10 +183,32 @@ async def submit_document(
             "Used to send failure notifications when the document lands in NEEDS_REVIEW."
         ),
     ),
+    match_mode: str = Form(
+        default="REQUIRED",
+        description=(
+            "Controls three-way match behaviour. "
+            "REQUIRED (default): a match FAIL halts the pipeline and sends the document to NEEDS_REVIEW. "
+            "ADVISORY: the match runs and the result is recorded, but the pipeline always continues to POSTING regardless of outcome. "
+            "SKIP: matching is bypassed entirely (equivalent to adding MATCHING to skip_stages)."
+        ),
+    ),
     db: Session = Depends(get_db),
     _api_key: str = Depends(verify_api_key),
 ):
     import json
+
+    # Validate match_mode
+    VALID_MATCH_MODES = {"REQUIRED", "ADVISORY", "SKIP"}
+    match_mode = match_mode.strip().upper()
+    if match_mode not in VALID_MATCH_MODES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_match_mode",
+                "message": f"match_mode must be one of: {', '.join(sorted(VALID_MATCH_MODES))}. Got: '{match_mode}'.",
+                "doc_url": "https://docs.dokr.io/errors#invalid_match_mode",
+            },
+        )
 
     # Parse skip_stages
     VALID_SKIP = {"MATCHING", "POSTING"}
@@ -276,6 +298,7 @@ async def submit_document(
         webhook_url=webhook_url,
         skip_stages=parsed_skip_stages,
         submitter_email=submitter_email or None,
+        match_mode=match_mode,
     )
     db.add(doc)
 
@@ -646,6 +669,7 @@ def _to_document_out(doc: Document) -> DocumentOut:
         webhook_url=doc.webhook_url,
         shipment_id=doc.shipment_id,
         skip_stages=doc.skip_stages,
+        match_mode=getattr(doc, "match_mode", "REQUIRED"),
         classification_confidence=doc.classification_confidence,
         suggested_class_name=doc.suggested_class_name,
         candidate_reason=doc.candidate_reason,

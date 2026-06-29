@@ -397,6 +397,25 @@ def _doc_detail(db: Session, doc_id: str) -> Optional[dict]:
         except Exception:
             pass
 
+    # ── Match mode + shipment match state ────────────────────────────────────
+    _match_mode = getattr(d, "match_mode", "REQUIRED") or "REQUIRED"
+    shipment_match_result = None
+    shipment_match_checks = []
+    shipment_match_summary = ""
+    if d.shipment_id:
+        from app.models.shipment import ShipmentRecord
+        _shp = db.query(ShipmentRecord).filter(ShipmentRecord.id == d.shipment_id).first()
+        if _shp:
+            shipment_match_result = _shp.match_result
+            shipment_match_summary = (_shp.match_detail or {}).get("summary", "") if _shp.match_detail else ""
+            shipment_match_checks  = (_shp.match_detail or {}).get("checks", []) if _shp.match_detail else []
+
+    # Advisory match warning: match ran, result is FAIL, but pipeline continued
+    advisory_match_failed = (
+        _match_mode == "ADVISORY"
+        and shipment_match_result == "FAIL"
+    )
+
     return dict(
         id=d.id,
         file_name=d.file_name,
@@ -451,6 +470,12 @@ def _doc_detail(db: Session, doc_id: str) -> Optional[dict]:
         is_signed=d.is_signed,
         signature_confidence=round(d.signature_confidence or 0.0, 2),
         signature_evidence=json.loads(d.signature_evidence_json) if d.signature_evidence_json else None,
+        # Match mode + advisory state
+        match_mode=_match_mode,
+        shipment_match_result=shipment_match_result or "",
+        shipment_match_checks=shipment_match_checks,
+        shipment_match_summary=shipment_match_summary,
+        advisory_match_failed=advisory_match_failed,
     )
 
 

@@ -212,6 +212,33 @@
       {% endif %}
       {% endif %}
 
+      <!-- Three-way match mode badge -->
+      {% if doc.match_mode == "ADVISORY" %}
+      <span style="flex:none;font-size:11px;font-weight:600;padding:1px 8px;
+                   border-radius:12px;cursor:pointer;
+                   color:#F59E0B;background:rgba(245,158,11,0.12);"
+            onclick="document.getElementById('match-panel').style.display = document.getElementById('match-panel').style.display === 'none' ? 'block' : 'none'"
+            title="Advisory match — pipeline continues to BC even on mismatch">
+        {% if doc.shipment_match_result == "FAIL" %}⚠ Match FAIL (advisory){% elif doc.shipment_match_result == "PASS" %}✓ Match PASS (advisory){% else %}⚖ Match Advisory{% endif %}
+      </span>
+      {% elif doc.match_mode == "SKIP" %}
+      <span style="flex:none;font-size:11px;font-weight:600;padding:1px 8px;
+                   border-radius:12px;color:var(--muted);background:var(--surface-2);"
+            title="Three-way match skipped for this document">
+        ⊘ Match Skipped
+      </span>
+      {% elif doc.shipment_match_result %}
+      <span style="flex:none;font-size:11px;font-weight:600;padding:1px 8px;
+                   border-radius:12px;cursor:pointer;
+                   {% if doc.shipment_match_result == 'PASS' %}color:#00C97A;background:rgba(0,201,122,0.12);
+                   {% elif doc.shipment_match_result == 'PASS_PARTIAL' %}color:#F59E0B;background:rgba(245,158,11,0.12);
+                   {% else %}color:#E55C5C;background:rgba(229,92,92,0.12);{% endif %}"
+            onclick="document.getElementById('match-panel').style.display = document.getElementById('match-panel').style.display === 'none' ? 'block' : 'none'"
+            title="Click to view three-way match detail">
+        {% if doc.shipment_match_result == "PASS" %}✓ Match PASS{% elif doc.shipment_match_result == "PASS_PARTIAL" %}⚡ Match PARTIAL{% else %}✗ Match FAIL{% endif %}
+      </span>
+      {% endif %}
+
       {% if page_count > 1 %}
       <!-- Page navigation (AJAX — no full reload) -->
       <div style="display:flex;align-items:center;gap:3px;flex:none;">
@@ -701,6 +728,66 @@
         {% endif %}
 
       </div>
+
+      <!-- Three-way match detail panel (toggle via badge click) -->
+      {% if doc.shipment_match_result or doc.advisory_match_failed %}
+      <div id="match-panel"
+           style="display:none;border-top:2px solid
+                  {% if doc.shipment_match_result == 'PASS' %}rgba(0,201,122,0.5);background:rgba(0,201,122,0.06);
+                  {% elif doc.advisory_match_failed %}rgba(245,158,11,0.5);background:rgba(245,158,11,0.06);
+                  {% else %}rgba(229,92,92,0.4);background:rgba(229,92,92,0.06);{% endif %}
+                  padding:12px 16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="font-size:13px;font-weight:600;
+                       {% if doc.shipment_match_result == 'PASS' %}color:#00C97A;
+                       {% elif doc.advisory_match_failed %}color:#F59E0B;
+                       {% else %}color:#E55C5C;{% endif %}">
+            ⚖ Three-way match — {{ doc.shipment_match_result or '—' }}
+          </span>
+          {% if doc.match_mode != "REQUIRED" %}
+          <span class="chip" style="font-size:9px;
+                {% if doc.match_mode == 'ADVISORY' %}color:#F59E0B;background:rgba(245,158,11,0.15);
+                {% else %}color:var(--muted);background:var(--surface-2);{% endif %}">
+            {{ doc.match_mode }}
+          </span>
+          {% endif %}
+          {% if doc.advisory_match_failed %}
+          <span style="font-size:11px;color:#F59E0B;margin-left:4px;">
+            Posted to BC despite mismatch
+          </span>
+          {% endif %}
+        </div>
+
+        {% if doc.shipment_match_summary %}
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+          {{ doc.shipment_match_summary }}
+        </div>
+        {% endif %}
+
+        {% if doc.shipment_match_checks %}
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          {% for chk in doc.shipment_match_checks %}
+          <div style="display:flex;align-items:flex-start;gap:8px;
+                      padding:5px 8px;border-radius:4px;
+                      background:{% if chk.status == 'PASS' %}rgba(0,201,122,0.08)
+                                 {% elif chk.status == 'SKIP' %}rgba(0,0,0,0.12)
+                                 {% else %}rgba(229,92,92,0.10){% endif %};">
+            <span style="flex:none;font-size:11px;font-weight:600;min-width:36px;
+                         color:{% if chk.status == 'PASS' %}#00C97A
+                               {% elif chk.status == 'SKIP' %}var(--muted)
+                               {% else %}#E55C5C{% endif %};">
+              {{ chk.status }}
+            </span>
+            <span style="font-size:11px;font-weight:600;color:var(--text);min-width:140px;">
+              {{ chk.name }}
+            </span>
+            <span style="font-size:11px;color:var(--muted);">{{ chk.detail }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
 
       <!-- ── PIPELINE TRAIL TAB ──────────────────── -->
       <div class="tab-panel" id="tab-trail">

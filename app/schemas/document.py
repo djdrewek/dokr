@@ -50,6 +50,14 @@ class DocumentOut(BaseModel):
     webhook_url: str | None = None
     shipment_id: str | None = Field(default=None, description="ShipmentRecord ID this document belongs to.")
     skip_stages: list[str] | None = Field(default=None, description="Pipeline stages skipped for this document.")
+    match_mode: str = Field(
+        default="REQUIRED",
+        description=(
+            "Three-way match behaviour: "
+            "REQUIRED (halt on fail), ADVISORY (record result, always continue to POSTING), "
+            "or SKIP (bypass matching entirely)."
+        ),
+    )
 
     # ── Governance fields ─────────────────────────────────────────────────────
     classification_confidence: Optional[float] = Field(

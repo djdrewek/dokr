@@ -256,6 +256,12 @@ class Document(Base):
     # e.g. ["MATCHING", "POSTING"] for STORE-only docs or caller-overridden routing
     skip_stages: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+    # Three-way match behaviour
+    #   REQUIRED  (default) — match FAIL → NEEDS_REVIEW, pipeline halts
+    #   ADVISORY            — match runs; FAIL is recorded but pipeline continues to POSTING
+    #   SKIP                — matching stage is bypassed entirely (equivalent to skip_stages=MATCHING)
+    match_mode: Mapped[str] = mapped_column(String, default="REQUIRED", server_default="REQUIRED")
+
     # Integration
     webhook_url: Mapped[str | None] = mapped_column(String, nullable=True)
 

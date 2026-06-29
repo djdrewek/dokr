@@ -88,6 +88,8 @@ def _migrate_existing_tables():
         # Document — failure notification fields
         ("documents", "submitter_email", "VARCHAR(320)"),
         ("documents", "error_reason",    "TEXT"),
+        # Document — three-way match behaviour override
+        ("documents", "match_mode",      "VARCHAR(20) NOT NULL DEFAULT 'REQUIRED'"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:
