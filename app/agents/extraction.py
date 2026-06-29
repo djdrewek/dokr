@@ -999,7 +999,7 @@ class ExtractionAgent(BaseAgent):
 
             elif pdf_bytes:
                 # Scanned / image-only PDF: pass directly to vision API in free-form mode
-                raw    = _extract_vision_api(pdf_bytes, dc_id, [])  # empty list = find everything
+                raw    = _extract_vision_api(pdf_bytes, dc_id, [], file_name=doc.file_name)
                 method = "AI_VISION_DISCOVERY"
                 logger.info("doc %s: ZERO_SHOT vision discovery → %d fields",
                             doc.id, len(raw))
@@ -1040,7 +1040,7 @@ class ExtractionAgent(BaseAgent):
                     raw    = {**core_raw, **additional_raw, **tables_raw}
                     method = f"AI_DISCOVERY_{stage}"
                 elif pdf_bytes:
-                    raw    = _extract_vision_api(pdf_bytes, dc_id, [])
+                    raw    = _extract_vision_api(pdf_bytes, dc_id, [], file_name=doc.file_name)
                     method = f"AI_VISION_DISCOVERY_{stage}"
             else:
                 hints = schema_learner.get_schema_hints(dc_id)
@@ -1050,7 +1050,7 @@ class ExtractionAgent(BaseAgent):
                     logger.info("doc %s: AI text extraction → %d fields", doc.id, len(raw))
 
                 if not raw and pdf_bytes:
-                    raw    = _extract_vision_api(pdf_bytes, dc_id, target_fields)
+                    raw    = _extract_vision_api(pdf_bytes, dc_id, target_fields, file_name=doc.file_name)
                     method = f"AI_VISION_{stage}"
                     logger.info("doc %s: AI vision → %d fields", doc.id, len(raw))
 
@@ -2073,10 +2073,18 @@ def _extract_text_layer(pdf_bytes: bytes | None) -> str:
 
 def _preprocess_for_vision(pil_img):
     """
-    Lighter preprocessing before sending to Claude Vision:
-    deskew + CLAHE on the L channel (preserves colour — Claude reads
-    layout context from the full image, not just isolated text pixels).
-    Falls back to the original image if OpenCV is unavailable.
+    Preprocess a PIL image before sending to Claude Vision.
+
+    Pipeline (all steps preserve colour so Claude reads layout context):
+      1. Deskew  — correct rotation using minAreaRect on inverted binary image.
+                   Clamped to ±15° to reject false angles on sparse pages.
+      2. Normalise L channel — stretch the actual luminance range to 0–255 so
+                   faded / under-exposed scans use the full dynamic range.
+      3. CLAHE   — adaptive local contrast enhancement (clip 4.0, 8×8 tiles).
+      4. Unsharp mask — sharpens text edges on blurry scans without amplifying
+                   background noise.
+
+    Falls back gracefully to the original image if OpenCV is unavailable.
     """
     try:
         import cv2
@@ -2085,7 +2093,7 @@ def _preprocess_for_vision(pil_img):
 
         img_np = np.array(pil_img.convert("RGB"))
 
-        # Deskew on grayscale, then apply rotation to the colour image ───
+        # 1. Deskew ──────────────────────────────────────────────────────────
         try:
             gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
             _, binary_inv = cv2.threshold(
@@ -2095,7 +2103,9 @@ def _preprocess_for_vision(pil_img):
             if len(coords) > 100:
                 angle = cv2.minAreaRect(coords)[-1]
                 angle = -(90 + angle) if angle < -45 else -angle
-                if abs(angle) > 0.3:
+                # Clamp to ±15° — larger values are almost certainly wrong
+                # (e.g. a sparse page where minAreaRect picks up noise)
+                if 0.3 < abs(angle) <= 15.0:
                     h, w = img_np.shape[:2]
                     M    = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
                     img_np = cv2.warpAffine(
@@ -2106,12 +2116,22 @@ def _preprocess_for_vision(pil_img):
         except Exception:
             pass
 
-        # CLAHE on the L channel of LAB (preserves hue/saturation) ───────
-        lab          = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
-        l_ch, a, b   = cv2.split(lab)
-        clahe        = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        lab_enhanced = cv2.merge([clahe.apply(l_ch), a, b])
-        img_np       = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
+        # 2. Normalise L channel + 3. CLAHE ──────────────────────────────────
+        lab        = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+        l_ch, a, b = cv2.split(lab)
+        # Stretch L to full 0–255 range (helps faded/under-exposed scans)
+        l_norm = cv2.normalize(l_ch, None, 0, 255, cv2.NORM_MINMAX)
+        # Adaptive contrast — clip 4.0 is more aggressive than the old 3.0,
+        # which helps very low-contrast areas without over-brightening highlights
+        clahe        = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        l_enhanced   = clahe.apply(l_norm)
+        img_np       = cv2.cvtColor(cv2.merge([l_enhanced, a, b]), cv2.COLOR_LAB2RGB)
+
+        # 4. Unsharp mask — sharpen blurry text ──────────────────────────────
+        # Amount 1.4×original − 0.4×blurred gives a gentle but noticeable sharpening
+        blurred = cv2.GaussianBlur(img_np, (0, 0), sigmaX=1.2)
+        img_np  = cv2.addWeighted(img_np, 1.4, blurred, -0.4, 0)
+        img_np  = np.clip(img_np, 0, 255).astype(np.uint8)
 
         return _PILImg.fromarray(img_np)
 
@@ -2160,6 +2180,7 @@ def _extract_vision_api(
     pdf_bytes: bytes,
     doc_class_id: str,
     target_fields: list[str],
+    file_name: str | None = None,
 ) -> dict[str, tuple[str, float]]:
     """
     Tier 3: Send the first 2 PDF pages as JPEG images to Claude claude-sonnet-4-6
@@ -2172,31 +2193,33 @@ def _extract_vision_api(
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
         # ── Render PDF pages to JPEG with preprocessing ──────────────────────────
-        # Up to 4 pages at 250 DPI; apply deskew + CLAHE so faded / rotated scans
-        # are readable by Claude (same _preprocess_for_vision used for OCR path).
+        # Up to 4 pages at 300 DPI; apply deskew + normalise + CLAHE + unsharp
+        # so faded / rotated / blurry scans are readable by Claude Vision.
         jpeg_pages: list[bytes] = []
-        MAX_PAGES = 4
+        MAX_PAGES   = 4
+        RENDER_DPI  = 300    # 300 DPI — better input for hard-to-read scans
+        JPEG_QUALITY = 92    # higher quality preserves fine text detail
         try:
             import fitz  # PyMuPDF — no poppler dependency
             from PIL import Image as _VPil
             doc_fitz = fitz.open(stream=pdf_bytes, filetype="pdf")
-            mat      = fitz.Matrix(250 / 72, 250 / 72)   # 250 DPI (up from 200)
+            mat      = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
             for page_num in range(min(MAX_PAGES, len(doc_fitz))):
                 pix      = doc_fitz[page_num].get_pixmap(matrix=mat)
                 pil_img  = _VPil.open(io.BytesIO(pix.tobytes("png")))
                 enhanced = _preprocess_for_vision(pil_img)
                 buf      = io.BytesIO()
-                enhanced.save(buf, format="JPEG", quality=88)
+                enhanced.save(buf, format="JPEG", quality=JPEG_QUALITY)
                 jpeg_pages.append(buf.getvalue())
         except ImportError:
             from pdf2image import convert_from_bytes
             from PIL import Image as _VPil
-            pil_imgs = convert_from_bytes(pdf_bytes, dpi=250,
+            pil_imgs = convert_from_bytes(pdf_bytes, dpi=RENDER_DPI,
                                           first_page=1, last_page=MAX_PAGES)
             for img in pil_imgs[:MAX_PAGES]:
                 enhanced = _preprocess_for_vision(img)
                 buf      = io.BytesIO()
-                enhanced.save(buf, format="JPEG", quality=88)
+                enhanced.save(buf, format="JPEG", quality=JPEG_QUALITY)
                 jpeg_pages.append(buf.getvalue())
 
         if not jpeg_pages:
@@ -2210,12 +2233,22 @@ def _extract_vision_api(
                 "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
             })
 
+        # ── Filename hint (issuer / document type clue) ──────────────────────────
+        _file_hint = (
+            f"File name: {file_name}\n"
+            "Use this as a hint for the document type and issuing company "
+            "(e.g. 'DHL_Invoice_2024.pdf' suggests a DHL invoice). "
+            "The document may contain multiple document types if it is a scanned packet.\n\n"
+            if file_name else ""
+        )
+
         # ── Prompt: free-form discovery (empty list) or targeted extraction ──────
         if not target_fields:
             # ZERO_SHOT discovery mode: find EVERYTHING, return structured output
             prompt = (
                 "You are reading a document image for a logistics and procurement company.\n"
-                "Some pages may contain two documents overlaid on the same scan (e.g. a\n"
+                + _file_hint
+                + "Some pages may contain two documents overlaid on the same scan (e.g. a\n"
                 "courier waybill printed on top of a commercial invoice). Extract data from\n"
                 "BOTH documents — label fields from each document separately if they conflict.\n"
                 "Extract ALL data visible in the document and return it in this JSON structure:\n\n"

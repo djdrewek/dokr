@@ -368,20 +368,31 @@ class ClassificationAgent(BaseAgent):
 
         Three-tier strategy:
           1. Manual override (human pinned the class) → instant return.
-          2. Keyword scoring against classes that exist in the DB AND have rules.
-          3. AI classification — used when no classes exist yet (fresh install) OR
-             no keyword rule fires. AI proposes a class name; if it's new, creates
-             a DocumentClass row in the DB on the fly.
+          2. Keyword scoring against classes in the DB + filename hint bonus.
+          3. AI classification — used when no classes exist yet (fresh install)
+             OR no keyword rule fires. Filename is passed as a hint to the AI.
 
         Returns (None, 0.0) only if all three tiers fail.
         """
+        import re as _re
+
         # Manual override bypasses auto-classification (confidence = 1.0 — human decided)
         if doc.document_class_override:
             return doc.document_class_override, 1.0
 
         text = _extract_pdf_text(pdf_bytes)
-        if not text:
-            return None, 0.0
+
+        # Build a normalised filename stem for hint scoring.
+        # e.g. "DHL_Waybill_2024-01.pdf" → "dhl waybill 2024 01"
+        # Exclude generic multi-doc names ("packet", "bundle", "scan", "combined")
+        _MULTI_DOC_TERMS = {"packet", "bundle", "combined", "scan", "scanned",
+                            "documents", "files", "mixed", "all", "full"}
+        file_stem = ""
+        if doc.file_name:
+            raw_stem = _re.sub(r"[_\-\.]", " ", doc.file_name.rsplit(".", 1)[0]).lower()
+            stem_words = set(raw_stem.split())
+            if not stem_words & _MULTI_DOC_TERMS:   # skip generic combined-file names
+                file_stem = raw_stem
 
         # ── Load existing DB classes ──────────────────────────────────────────────
         from app.models.document import DocumentClass
@@ -390,7 +401,7 @@ class ClassificationAgent(BaseAgent):
         # If there are no document classes at all, skip straight to AI creation
         if not db_classes:
             logger.info("doc %s: no document classes in DB → AI classification", doc.id)
-            return self._ai_classify(text, [])
+            return self._ai_classify(text or "", [], file_name=file_stem or doc.file_name)
 
         # ── High-priority pre-checks for classes that share many generic keywords ──
 
@@ -398,7 +409,7 @@ class ClassificationAgent(BaseAgent):
         # Both contain "client invoice" + "tata limited invoice no" — phrases unique
         # to Tata Limited's own invoice format. Checked before general scoring to
         # prevent dc_006 (Supplier Invoice) winning on raw keyword count.
-        if "client invoice" in text and "tata limited invoice no" in text:
+        if text and "client invoice" in text and "tata limited invoice no" in text:
             if "client invoice -a2" in text or "a2 invoice" in text:
                 return "dc_012", 1.0
             return "dc_011", 1.0
@@ -409,6 +420,7 @@ class ClassificationAgent(BaseAgent):
         # This lets operators edit keywords in the dashboard without code changes.
         import json as _json
         raw_scores: dict[str, int] = {}
+        kw_lookup: dict[str, list[str]] = {}   # cache for filename bonus pass below
         for class_id, dc_obj in db_classes.items():
             # Resolve keyword list: DB profile takes precedence over static dict
             db_keywords: list[str] | None = None
@@ -416,25 +428,44 @@ class ClassificationAgent(BaseAgent):
             if dc_obj.classifier_profile_json:
                 try:
                     profile = _json.loads(dc_obj.classifier_profile_json)
-                    db_keywords   = profile.get("keywords") or []
-                    neg_keywords  = profile.get("negative_keywords") or []
+                    db_keywords  = profile.get("keywords") or []
+                    neg_keywords = profile.get("negative_keywords") or []
                 except Exception:
                     pass
             keywords = db_keywords if db_keywords is not None else CLASSIFICATION_RULES.get(class_id, [])
             if not keywords:
                 continue
-            score = sum(1 for kw in keywords if kw in text)
+            kw_lookup[class_id] = keywords
+            score = sum(1 for kw in keywords if kw in (text or ""))
             # Subtract for negative keyword hits
-            score -= sum(1 for kw in neg_keywords if kw in text)
+            score -= sum(1 for kw in neg_keywords if kw in (text or ""))
             raw_scores[class_id] = max(score, 0)
+
+        # ── Filename hint bonus ───────────────────────────────────────────────────
+        # Add up to +2 per class whose keywords appear in the filename stem.
+        # This rescues scanned PDFs (little/no text) and acts as a tiebreaker for
+        # content-rich PDFs.  Generic multi-doc names are excluded above.
+        if file_stem:
+            for class_id, keywords in kw_lookup.items():
+                # Only score keywords longer than 4 chars to avoid noise ("po", "do" etc.)
+                bonus = sum(1 for kw in keywords if len(kw) > 4 and kw.lower() in file_stem)
+                bonus = min(bonus, 2)
+                if bonus:
+                    raw_scores[class_id] = raw_scores.get(class_id, 0) + bonus
+                    logger.debug(
+                        "doc %s: filename hint +%d for class %s (stem=%r)",
+                        doc.id, bonus, class_id, file_stem,
+                    )
 
         scores = {dc: s for dc, s in raw_scores.items() if s >= MIN_MATCH_THRESHOLD}
 
         if not scores:
             # No keyword rule fired — fall back to AI classification.
             # AI will match against existing DB classes OR propose + create a new one.
-            logger.info("doc %s: no keyword match → AI classification fallback", doc.id)
-            return self._ai_classify(text, list(db_classes.values()))
+            logger.info("doc %s: no keyword/filename match → AI classification fallback", doc.id)
+            return self._ai_classify(
+                text or "", list(db_classes.values()), file_name=file_stem or doc.file_name
+            )
 
         # Return highest scorer; prefer more specific classes in ties.
         # Use DB profile priority if available, otherwise fall back to static map.
@@ -594,6 +625,7 @@ class ClassificationAgent(BaseAgent):
         self,
         text: str,
         existing_classes: list,
+        file_name: str | None = None,
     ) -> tuple[str | None, float]:
         """
         Use Claude to classify the document when keyword scoring fails or the DB
@@ -622,10 +654,20 @@ class ClassificationAgent(BaseAgent):
             if options else ""
         )
 
+        file_hint = (
+            f"File name: {file_name}\n"
+            "Use the file name as a supporting hint — it often reveals the document type "
+            "or the issuing company (e.g. 'DHL_Waybill_2024.pdf' → Airway Bill from DHL). "
+            "Do not rely on it alone if the document text clearly says otherwise.\n\n"
+            if file_name else ""
+        )
+
         prompt = (
             "You are classifying a business or logistics document.\n\n"
             + options_block
-            + "Based on the document text below, determine the document type.\n"
+            + file_hint
+            + "Based on the file name hint (if provided) and the document text below, "
+            "determine the document type.\n"
             "Return ONLY this JSON (no markdown, no explanation):\n"
             '{"document_type": "2-4 word name", "match_id": "existing_id_or_null", "confidence": 0.0-1.0}\n\n'
             "Rules:\n"
