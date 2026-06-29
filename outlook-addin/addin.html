@@ -33,6 +33,13 @@
     async function sendToDokr(event) {
       const item = Office.context.mailbox.item;
 
+      // Capture the signed-in user's email address so Dokr can notify them if
+      // the document needs human review.  userProfile is always populated in
+      // Outlook (desktop + web) — no async call needed.
+      const submitterEmail =
+        (Office.context.mailbox.userProfile &&
+         Office.context.mailbox.userProfile.emailAddress) || "";
+
       // Filter to real file attachments only — exclude inline images (logos,
       // email signatures, embedded graphics) which also come through as File type
       // but have isInline === true.
@@ -56,7 +63,7 @@
       for (const att of files) {
         try {
           const content = await getAttachmentContent(att.id);
-          await upload(content, att.name, att.contentType || "application/octet-stream");
+          await upload(content, att.name, att.contentType || "application/octet-stream", submitterEmail);
           ok++;
         } catch (err) {
           errors.push(`${att.name}: ${err.message}`);
@@ -92,7 +99,7 @@
     }
 
     /** Decode base64 attachment and POST as multipart/form-data to the API. */
-    async function upload(content, filename, mimeType) {
+    async function upload(content, filename, mimeType, submitterEmail) {
       // content.content is base64-encoded file bytes
       const binary = atob(content.content);
       const bytes  = new Uint8Array(binary.length);
@@ -101,6 +108,8 @@
       const blob = new Blob([bytes], { type: mimeType });
       const form = new FormData();
       form.append("file", new File([blob], filename, { type: mimeType }));
+      // Pass the submitter's email so Dokr can notify them on failure
+      if (submitterEmail) form.append("submitter_email", submitterEmail);
 
       const headers = {
         // Bypasses the ngrok browser-warning interstitial for API calls.

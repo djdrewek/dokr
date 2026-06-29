@@ -1025,10 +1025,12 @@ def _set_needs_review(db, doc: Document, reason: str) -> None:
     """
     Transition a document to NEEDS_REVIEW without requiring a specific agent object.
     Used in _run_governance where the extraction_agent may be None.
+    Also persists error_reason and fires failure notifications.
     """
     from datetime import datetime
     from app.models.document import PipelineEvent
     doc.status = PipelineState.NEEDS_REVIEW
+    doc.error_reason = reason   # persist for dashboard display + notifications
     doc.updated_at = datetime.utcnow()
     event = PipelineEvent(
         document_id=doc.id,
@@ -1038,6 +1040,12 @@ def _set_needs_review(db, doc: Document, reason: str) -> None:
     )
     db.add(event)
     db.commit()
+    # Fire failure notifications best-effort — never block the pipeline.
+    try:
+        from app.agents.notifying import fire_failure_notifications
+        fire_failure_notifications(db, doc)
+    except Exception:
+        pass
 
 
 def _log_event(db, document_id: str, state, agent: str, detail: str) -> None:

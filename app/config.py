@@ -21,6 +21,20 @@ When absent, FilingAgent records the path locally (no upload).
   SP_ACCESS_TOKEN  = <Graph API access token (Files.ReadWrite.All scope)>
   SP_DRIVE_ID      = <optional: specific drive ID, defaults to default drive>
 
+Failure notifications
+──────────────────────
+Set SMTP_HOST (+ optionally SMTP_USER/SMTP_PASSWORD) to email the document submitter
+when their document lands in NEEDS_REVIEW.  Set TEAMS_WEBHOOK_URL to also post an
+adaptive card alert to a Teams channel.
+
+  SMTP_HOST            = smtp.office365.com
+  SMTP_PORT            = 587
+  SMTP_USER            = noreply@yourdomain.com
+  SMTP_PASSWORD        = <app password>
+  SMTP_FROM            = Dokr Notifications <noreply@yourdomain.com>
+  TEAMS_WEBHOOK_URL    = https://outlook.office.com/webhook/...
+  FAILURE_NOTIFICATIONS_ENABLED = true
+
 Match tolerance
 ───────────────
 MATCH_TOLERANCE_DEFAULT is the global tolerance (%).
@@ -86,6 +100,32 @@ class Settings(BaseSettings):
     match_tolerance_dc_011: Optional[float] = None   # TLL Sales Invoice
     match_tolerance_dc_012: Optional[float] = None   # TLL A2 Commission Invoice
     match_tolerance_dc_013: Optional[float] = None   # Freight Agent Invoice
+
+    # ── Failure notifications ─────────────────────────────────────────────────
+    # Set SMTP_HOST to enable emails to the document submitter when a document
+    # lands in NEEDS_REVIEW.  All other SMTP fields are optional/have defaults.
+    #
+    #   SMTP_HOST     = smtp.office365.com
+    #   SMTP_PORT     = 587              (STARTTLS; use 465 for SSL)
+    #   SMTP_USER     = noreply@yourdomain.com
+    #   SMTP_PASSWORD = <app password>
+    #   SMTP_FROM     = Dokr Notifications <noreply@yourdomain.com>
+    #
+    # Set TEAMS_WEBHOOK_URL to also post an alert card to a Teams channel.
+    #
+    #   TEAMS_WEBHOOK_URL = https://outlook.office.com/webhook/...
+    #
+    # Set FAILURE_NOTIFICATIONS_ENABLED=false to suppress all notifications.
+    smtp_host:     Optional[str] = None
+    smtp_port:     int           = 587
+    smtp_user:     Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from:     str           = "Dokr <noreply@dokr.local>"
+    smtp_use_ssl:  bool          = False   # True = SSL on port 465; False = STARTTLS
+
+    teams_webhook_url: Optional[str] = None
+
+    failure_notifications_enabled: bool = True
 
     def match_tolerance_for(self, document_class_id: str | None) -> float:
         """Return the effective match tolerance for a given document class."""

@@ -50,4 +50,13 @@ class BaseAgent:
         self.transition(doc, PipelineState.FAILED, f"[{self.name}] {reason}")
 
     def needs_review(self, doc: Document, reason: str) -> None:
+        # Persist the error reason on the document record so the dashboard can display it
+        # and so notification helpers can include it in email/Teams messages.
+        doc.error_reason = reason
         self.transition(doc, PipelineState.NEEDS_REVIEW, f"[{self.name}] {reason}")
+        # Fire failure notifications best-effort — never block the pipeline.
+        try:
+            from app.agents.notifying import fire_failure_notifications
+            fire_failure_notifications(self.db, doc)
+        except Exception:
+            pass

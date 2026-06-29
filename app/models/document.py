@@ -259,6 +259,12 @@ class Document(Base):
     # Integration
     webhook_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Submitter identity (set by Outlook add-in at upload time)
+    submitter_email: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Failure tracking — set whenever the document transitions to NEEDS_REVIEW
+    error_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

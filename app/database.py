@@ -85,6 +85,9 @@ def _migrate_existing_tables():
         ("extracted_fields", "address_json", "TEXT"),
         # Document — SplittingAgent parent bundle link
         ("documents", "parent_document_id", "VARCHAR(40)"),
+        # Document — failure notification fields
+        ("documents", "submitter_email", "VARCHAR(320)"),
+        ("documents", "error_reason",    "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, col_def in new_columns:

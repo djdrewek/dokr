@@ -175,6 +175,14 @@ async def submit_document(
             "Valid values: MATCHING, POSTING."
         ),
     ),
+    submitter_email: str | None = Form(
+        default=None,
+        description=(
+            "Email address of the person submitting this document. "
+            "Populated automatically by the Outlook add-in from the signed-in user's identity. "
+            "Used to send failure notifications when the document lands in NEEDS_REVIEW."
+        ),
+    ),
     db: Session = Depends(get_db),
     _api_key: str = Depends(verify_api_key),
 ):
@@ -267,6 +275,7 @@ async def submit_document(
         doc_metadata=parsed_metadata,
         webhook_url=webhook_url,
         skip_stages=parsed_skip_stages,
+        submitter_email=submitter_email or None,
     )
     db.add(doc)
 

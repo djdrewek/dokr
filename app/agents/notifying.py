@@ -45,8 +45,13 @@ httpx is used for all HTTP calls (sync, matches the synchronous pipeline runner)
 from __future__ import annotations
 
 import json
+import logging
+import smtplib
+import ssl
 from dataclasses import dataclass
 from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from sqlalchemy.orm import Session
 
@@ -54,6 +59,8 @@ from app.agents.base import BaseAgent
 from app.models.document import Document
 from app.models.extracted_field import ExtractedField
 from app.models.shipment import ShipmentRecord
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -144,6 +151,58 @@ class NotifyingAgent(BaseAgent):
         )
 
 
+    def notify_failure(
+        self,
+        doc: Document,
+        error_reason: str | None = None,
+    ) -> None:
+        """
+        Fire failure notifications when a document transitions to NEEDS_REVIEW.
+
+        Channels (all best-effort — never block the pipeline):
+          1. Email to doc.submitter_email   (requires SMTP_HOST in config)
+          2. Teams adaptive card            (requires TEAMS_WEBHOOK_URL in config)
+        """
+        from app.config import settings
+
+        if not settings.failure_notifications_enabled:
+            return
+
+        reason = error_reason or doc.error_reason or "No reason recorded."
+
+        # ── Channel 1: email to submitter ─────────────────────────────────────
+        if settings.smtp_host and doc.submitter_email:
+            try:
+                _send_failure_email(doc, reason, settings)
+                logger.info(
+                    "doc %s: failure email sent to %s", doc.id, doc.submitter_email
+                )
+            except Exception as exc:
+                logger.warning(
+                    "doc %s: failure email to %s failed: %s", doc.id, doc.submitter_email, exc
+                )
+
+        # ── Channel 2: Teams webhook ──────────────────────────────────────────
+        if settings.teams_webhook_url:
+            try:
+                _post_teams_failure_card(doc, reason, settings.teams_webhook_url)
+                logger.info("doc %s: Teams failure card posted", doc.id)
+            except Exception as exc:
+                logger.warning("doc %s: Teams webhook failed: %s", doc.id, exc)
+
+
+def fire_failure_notifications(db: Session, doc: Document) -> None:
+    """
+    Module-level helper called from base.needs_review() and runner._set_needs_review().
+    Instantiates NotifyingAgent and fires notify_failure() best-effort.
+    """
+    try:
+        agent = NotifyingAgent(db)
+        agent.notify_failure(doc, error_reason=doc.error_reason)
+    except Exception as exc:
+        logger.warning("fire_failure_notifications for %s failed: %s", doc.id, exc)
+
+
 def fire_event(db: Session, event_name: str, payload: dict) -> None:
     """
     Public helper: fire an arbitrary named event to all matching subscriptions.
@@ -173,6 +232,116 @@ def _post_json(url: str, payload: dict) -> tuple[bool, int | None, str]:
         return False, resp.status_code, f"HTTP {resp.status_code} (non-2xx)"
     except Exception as exc:
         return False, None, f"{type(exc).__name__}: {exc}"
+
+
+def _send_failure_email(doc: Document, reason: str, settings) -> None:
+    """
+    Send a plain-text + HTML failure notification email to doc.submitter_email.
+    Uses STARTTLS by default (smtp_use_ssl=False); set smtp_use_ssl=True for port 465 SSL.
+    """
+    subject = f"[Dokr] Document needs review — {doc.file_name}"
+
+    dashboard_url = f"http://localhost:8000/dashboard/docs/{doc.id}"
+
+    plain = (
+        f"Hi,\n\n"
+        f"The document you submitted to Dokr could not be processed automatically "
+        f"and requires a human decision.\n\n"
+        f"File:     {doc.file_name}\n"
+        f"Doc ID:   {doc.id}\n"
+        f"Reason:   {reason}\n\n"
+        f"Please log in to the Dokr dashboard to review it:\n"
+        f"{dashboard_url}\n\n"
+        f"— Dokr"
+    )
+
+    html = f"""<html><body style="font-family:sans-serif;color:#1a1a1a;max-width:560px;">
+<h2 style="color:#d97706;">⚠ Document needs review</h2>
+<p>The document you submitted to Dokr could not be processed automatically
+and requires a human decision.</p>
+<table style="border-collapse:collapse;width:100%;margin:16px 0;">
+  <tr><td style="padding:6px 12px 6px 0;color:#666;white-space:nowrap;font-size:13px;">File</td>
+      <td style="padding:6px 0;font-size:13px;font-weight:600;">{doc.file_name}</td></tr>
+  <tr><td style="padding:6px 12px 6px 0;color:#666;white-space:nowrap;font-size:13px;">Doc ID</td>
+      <td style="padding:6px 0;font-size:13px;font-family:monospace;">{doc.id}</td></tr>
+  <tr><td style="padding:6px 12px 6px 0;color:#666;white-space:nowrap;vertical-align:top;font-size:13px;">Reason</td>
+      <td style="padding:6px 0;font-size:13px;color:#b45309;">{reason[:300]}</td></tr>
+</table>
+<a href="{dashboard_url}"
+   style="display:inline-block;background:#d97706;color:#fff;padding:10px 20px;
+          border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;">
+  Review in Dokr →
+</a>
+<p style="margin-top:24px;font-size:12px;color:#999;">— Dokr automated notification</p>
+</body></html>"""
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = settings.smtp_from
+    msg["To"]      = doc.submitter_email
+
+    msg.attach(MIMEText(plain, "plain"))
+    msg.attach(MIMEText(html, "html"))
+
+    if settings.smtp_use_ssl:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context) as server:
+            if settings.smtp_user and settings.smtp_password:
+                server.login(settings.smtp_user, settings.smtp_password)
+            server.sendmail(settings.smtp_from, doc.submitter_email, msg.as_string())
+    else:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+            server.ehlo()
+            server.starttls()
+            if settings.smtp_user and settings.smtp_password:
+                server.login(settings.smtp_user, settings.smtp_password)
+            server.sendmail(settings.smtp_from, doc.submitter_email, msg.as_string())
+
+
+def _post_teams_failure_card(doc: Document, reason: str, webhook_url: str) -> None:
+    """
+    Post a simple Teams Adaptive Card message via an incoming webhook.
+    Uses httpx (already a dependency for the notifying agent).
+    """
+    import httpx
+
+    dashboard_url = f"http://localhost:8000/dashboard/docs/{doc.id}"
+
+    # Microsoft Teams incoming webhook expects a MessageCard or AdaptiveCard payload.
+    # MessageCard is simpler and works in all Teams versions.
+    card = {
+        "@type":       "MessageCard",
+        "@context":    "https://schema.org/extensions",
+        "themeColor":  "d97706",
+        "summary":     f"Dokr: {doc.file_name} needs review",
+        "sections": [
+            {
+                "activityTitle":    "⚠ Document needs review",
+                "activitySubtitle": f"File: **{doc.file_name}**",
+                "facts": [
+                    {"name": "Doc ID",   "value": doc.id},
+                    {"name": "Class",    "value": doc.document_class_id or "—"},
+                    {"name": "Reason",   "value": reason[:300]},
+                    {"name": "Submitter","value": doc.submitter_email or "—"},
+                ],
+                "markdown": True,
+            }
+        ],
+        "potentialAction": [
+            {
+                "@type": "OpenUri",
+                "name":  "Review in Dokr →",
+                "targets": [{"os": "default", "uri": dashboard_url}],
+            }
+        ],
+    }
+
+    httpx.post(
+        webhook_url,
+        json=card,
+        headers={"Content-Type": "application/json"},
+        timeout=10.0,
+    )
 
 
 def _fan_out_subscriptions(db: Session, event_name: str, payload: dict) -> int:

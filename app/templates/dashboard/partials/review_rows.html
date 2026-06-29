@@ -18,6 +18,28 @@
 
     <!-- Expanded detail -->
     <div class="expand-content">
+
+      <!-- Error reason banner — shown whenever error_reason is set -->
+      {% if d.error_reason %}
+      <div style="display:flex;align-items:flex-start;gap:10px;
+                  background:#1C0F00;border:1px solid #7C3C0A;border-radius:6px;
+                  padding:12px 14px;margin-bottom:16px;">
+        <span style="color:#F59E0B;font-size:14px;flex:none;margin-top:1px;">⚠</span>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#F59E0B;letter-spacing:.04em;margin-bottom:4px;">
+            FAILURE REASON
+          </div>
+          <div style="font-size:12px;color:#FDE68A;line-height:1.55;white-space:pre-wrap;">{{ d.error_reason }}</div>
+          {% if d.submitter_email %}
+          <div style="margin-top:8px;font-size:11px;color:#92400E;">
+            Submitted by: <span style="color:#FCD34D;">{{ d.submitter_email }}</span>
+            — notified automatically when this document arrived here.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
       <div class="grid-2" style="gap:20px;">
 
         <!-- Left: NIGO conditions + governance -->

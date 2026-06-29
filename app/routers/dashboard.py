@@ -199,6 +199,8 @@ def _review_docs(db: Session) -> list[dict]:
             gov_verdict=gov.get("verdict", ""),
             gov_reasoning=gov.get("reasoning", "")[:100],
             updated_at=d.updated_at.strftime("%d %b %H:%M") if d.updated_at else "—",
+            error_reason=getattr(d, "error_reason", None) or "",
+            submitter_email=getattr(d, "submitter_email", None) or "",
         ))
     return rows
 
